@@ -2,12 +2,12 @@
 .\"     Title: i3status
 .\"    Author: [see the "AUTHORS" section]
 .\" Generator: DocBook XSL Stylesheets v1.76.1 <http://docbook.sf.net/>
-.\"      Date: 05/04/2012
+.\"      Date: 10/03/2012
 .\"    Manual: i3 Manual
-.\"    Source: i3status v2.5
+.\"    Source: i3status v2.6
 .\"  Language: English
 .\"
-.TH "I3STATUS" "1" "05/04/2012" "i3status v2\&.5" "i3 Manual"
+.TH "I3STATUS" "1" "10/03/2012" "i3status v2\&.6" "i3 Manual"
 .\" -----------------------------------------------------------------
 .\" * Define some portability stuff
 .\" -----------------------------------------------------------------
@@ -126,6 +126,7 @@ ethernet eth0 {
 battery 0 {
         format = "%status %percentage %remaining %emptytime"
         path = "/sys/class/power_supply/BAT%d/uevent"
+        low_threshold = 10
 }
 
 run_watch DHCP {
@@ -209,9 +210,13 @@ This module gets the IPv6 address used for outgoing connections (that is, the be
 .sp
 Gets used, free, available and total amount of bytes on the given mounted filesystem\&.
 .sp
+These values can also be expressed in percentages with the percentage_used, percentage_free, percentage_avail and percentage_used_of_avail formats\&.
+.sp
 \fBExample order\fR: disk /mnt/usbstick
 .sp
 \fBExample format\fR: %free (%avail)/ %total
+.sp
+\fBExample format\fR: %percentage_used used, %percentage_free free, %percentage_avail avail
 .SS "Run\-watch"
 .sp
 Expands the given path to a pidfile and checks if the process ID found inside is valid (that is, if the process is running)\&. You can use this to check if a specific application, such as a VPN client or your DHCP client is running\&.
@@ -235,13 +240,19 @@ Gets the IP address and (if possible) the link speed of the given ethernet inter
 \fBExample format\fR: E: %ip (%speed)
 .SS "Battery"
 .sp
-Gets the status (charging, discharging, running), percentage and remaining time of the given battery and when it\(cqs estimated to be empty\&. If you want to use the last full capacity instead of the design capacity (when using the design capacity, it may happen that your battery is at 23% when fully charged because it\(cqs old\&. In general, I want to see it this way, because it tells me how worn off my battery is\&.), just specify last_full_capacity = true\&.
+Gets the status (charging, discharging, running), percentage, remaining time and power consumption (in Watts) of the given battery and when it\(cqs estimated to be empty\&. If you want to use the last full capacity instead of the design capacity (when using the design capacity, it may happen that your battery is at 23% when fully charged because it\(cqs old\&. In general, I want to see it this way, because it tells me how worn off my battery is\&.), just specify last_full_capacity = true\&.
 .sp
 If your battery is represented in a non\-standard path in /sys, be sure to modify the "path" property accordingly\&. The first occurence of %d gets replaced with the battery number, but you can just hard\-code a path as well\&.
 .sp
+It is possible to define a low_threshold that causes the battery text to be colored red\&. The low_threshold type can be of threshold_type "time" or "percentage"\&. So, if you configure low_threshold to 10 and threshold_type to "time", and your battery lasts another 9 minutes, it will be colored red\&.
+.sp
 \fBExample order\fR: battery 0
 .sp
-\fBExample format\fR: %status %remaining (%emptytime)
+\fBExample format\fR: %status %remaining (%emptytime %consumption)
+.sp
+\fBExample low_threshold\fR: 30
+.sp
+\fBExample threshold_type\fR: time
 .SS "CPU\-Temperature"
 .sp
 Gets the temperature of the given thermal zone\&.
@@ -367,6 +378,8 @@ done
 .\}
 .sp
 Put that in some script, say \&.bin/my_i3status\&.sh and execute that instead of i3status\&.
+.sp
+Note that if you want to use the JSON output format (with colors in i3bar), you need to use a slightly more complex wrapper script\&. There are examples in the contrib/ folder, see http://code\&.i3wm\&.org/i3status/tree/contrib
 .SH "SEE ALSO"
 .sp
 strftime(3), date(1), glob(3), dzen2(1), xmobar(1)

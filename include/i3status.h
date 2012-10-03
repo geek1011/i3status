@@ -94,12 +94,12 @@ enum { O_DZEN2, O_XMOBAR, O_I3BAR, O_NONE } output_format;
 #define START_COLOR(colorstr) \
 	do { \
 		if (cfg_getbool(cfg_general, "colors")) { \
-			const char *val = cfg_getstr(cfg_general, colorstr); \
+			const char *_val = cfg_getstr(cfg_general, colorstr); \
 			if (output_format == O_I3BAR) { \
 				yajl_gen_string(json_gen, (const unsigned char *)"color", strlen("color")); \
-				yajl_gen_string(json_gen, (const unsigned char *)val, strlen(val)); \
+				yajl_gen_string(json_gen, (const unsigned char *)_val, strlen(_val)); \
 			} else { \
-				outwalk += sprintf(outwalk, "%s", color("color_bad")); \
+				outwalk += sprintf(outwalk, "%s", color(colorstr)); \
 			} \
 		} \
 	} while (0)
@@ -137,7 +137,7 @@ char *auto_detect_format();
 
 void print_ipv6_info(yajl_gen json_gen, char *buffer, const char *format_up, const char *format_down);
 void print_disk_info(yajl_gen json_gen, char *buffer, const char *path, const char *format);
-void print_battery_info(yajl_gen json_gen, char *buffer, int number, const char *path, const char *format, bool last_full_capacity);
+void print_battery_info(yajl_gen json_gen, char *buffer, int number, const char *path, const char *format, int low_threshold, char *threshold_type, bool last_full_capacity);
 void print_time(yajl_gen json_gen, char *buffer, const char *format, struct tm *current_tm);
 void print_ddate(yajl_gen json_gen, char *buffer, const char *format, struct tm *current_tm);
 const char *get_ip_addr();
