@@ -2,6 +2,8 @@ i3status (2.6-1) experimental; urgency=low
 
   * New upstream release
   * Enable hardening
+  * Remove unnecessary DMUA flag
+  * Add Vcs-Git/Vcs-Browser, move packaging to alioth
 
  -- Michael Stapelberg <stapelberg@debian.org>  Wed, 03 Oct 2012 13:51:47 +0200
 
