@@ -1,6 +1,7 @@
 i3status (2.6-1) experimental; urgency=low
 
   * New upstream release
+  * Enable hardening
 
  -- Michael Stapelberg <stapelberg@debian.org>  Wed, 03 Oct 2012 13:51:47 +0200
 
