@@ -1,4 +1,5 @@
 // vim:ts=8:expandtab
+#include <ctype.h>
 #include <time.h>
 #include <string.h>
 #include <stdlib.h>
@@ -20,13 +21,16 @@
 #include <machine/apmvar.h>
 #endif
 
+#define BATT_STATUS_NAME(status) \
+    (status == CS_CHARGING ? "CHR" : \
+        (status == CS_DISCHARGING ? "BAT" : "FULL"))
 /*
  * Get battery information from /sys. Note that it uses the design capacity to
  * calculate the percentage, not the last full capacity, so you can see how
  * worn off your battery is.
  *
  */
-void print_battery_info(yajl_gen json_gen, char *buffer, int number, const char *path, const char *format, bool last_full_capacity) {
+void print_battery_info(yajl_gen json_gen, char *buffer, int number, const char *path, const char *format, int low_threshold, char *threshold_type, bool last_full_capacity) {
         time_t empty_time;
         struct tm *empty_tm;
         char buf[1024];
@@ -34,17 +38,22 @@ void print_battery_info(yajl_gen json_gen, char *buffer, int number, const char 
         char percentagebuf[16];
         char remainingbuf[256];
         char emptytimebuf[256];
+        char consumptionbuf[256];
         const char *walk, *last;
         char *outwalk = buffer;
+        bool watt_as_unit;
+        bool colorful_output;
         int full_design = -1,
             remaining = -1,
-            present_rate = -1;
+            present_rate = -1,
+            voltage = -1;
         charging_status_t status = CS_DISCHARGING;
 
         memset(statusbuf, '\0', sizeof(statusbuf));
         memset(percentagebuf, '\0', sizeof(percentagebuf));
         memset(remainingbuf, '\0', sizeof(remainingbuf));
         memset(emptytimebuf, '\0', sizeof(emptytimebuf));
+        memset(consumptionbuf, '\0', sizeof(consumptionbuf));
 
         INSTANCE(path);
 
@@ -65,11 +74,22 @@ void print_battery_info(yajl_gen json_gen, char *buffer, int number, const char 
                 if (*walk != '=')
                         continue;
 
-                if (BEGINS_WITH(last, "POWER_SUPPLY_ENERGY_NOW") ||
-                    BEGINS_WITH(last, "POWER_SUPPLY_CHARGE_NOW"))
+                if (BEGINS_WITH(last, "POWER_SUPPLY_ENERGY_NOW")) {
+                        watt_as_unit = true;
                         remaining = atoi(walk+1);
+                }
+                else if (BEGINS_WITH(last, "POWER_SUPPLY_CHARGE_NOW")) {
+                        watt_as_unit = false;
+                        remaining = atoi(walk+1);
+                }
                 else if (BEGINS_WITH(last, "POWER_SUPPLY_CURRENT_NOW"))
                         present_rate = atoi(walk+1);
+                else if (BEGINS_WITH(last, "POWER_SUPPLY_VOLTAGE_NOW"))
+                        voltage = atoi(walk+1);
+                /* on some systems POWER_SUPPLY_POWER_NOW does not exist, but actually
+                 * it is the same as POWER_SUPPLY_CURRENT_NOW but with μWh as
+                 * unit instead of μAh. We will calculate it as we need it
+                 * later. */
                 else if (BEGINS_WITH(last, "POWER_SUPPLY_POWER_NOW"))
                         present_rate = atoi(walk+1);
                 else if (BEGINS_WITH(last, "POWER_SUPPLY_STATUS=Charging"))
@@ -92,15 +112,25 @@ void print_battery_info(yajl_gen json_gen, char *buffer, int number, const char 
                 }
         }
 
-        if ((full_design == 1) || (remaining == -1))
+        /* the difference between POWER_SUPPLY_ENERGY_NOW and
+         * POWER_SUPPLY_CHARGE_NOW is the unit of measurement. The energy is
+         * given in mWh, the charge in mAh. So calculate every value given in
+         * ampere to watt */
+        if (!watt_as_unit) {
+            present_rate = (((float)voltage / 1000.0) * ((float)present_rate / 1000.0));
+            remaining = (((float)voltage / 1000.0) * ((float)remaining / 1000.0));
+            full_design = (((float)voltage / 1000.0) * ((float)full_design / 1000.0));
+        }
+
+        if ((full_design == -1) || (remaining == -1)) {
+                OUTPUT_FULL_TEXT("No battery");
                 return;
+        }
 
-        (void)snprintf(statusbuf, sizeof(statusbuf), "%s",
-                        (status == CS_CHARGING ? "CHR" :
-                         (status == CS_DISCHARGING ? "BAT" : "FULL")));
+        (void)snprintf(statusbuf, sizeof(statusbuf), "%s", BATT_STATUS_NAME(status));
 
-        (void)snprintf(percentagebuf, sizeof(percentagebuf), "%.02f%%",
-                       (((float)remaining / (float)full_design) * 100));
+        float percentage_remaining = (((float)remaining / (float)full_design) * 100);
+        (void)snprintf(percentagebuf, sizeof(percentagebuf), "%.02f%%", percentage_remaining);
 
         if (present_rate > 0) {
                 float remaining_time;
@@ -118,6 +148,18 @@ void print_battery_info(yajl_gen json_gen, char *buffer, int number, const char 
                 minutes = seconds / 60;
                 seconds -= (minutes * 60);
 
+                if (status == CS_DISCHARGING && low_threshold > 0) {
+                        if (strncmp(threshold_type, "percentage", strlen(threshold_type)) == 0
+                                && percentage_remaining < low_threshold) {
+                                START_COLOR("color_bad");
+                                colorful_output = true;
+                        } else if (strncmp(threshold_type, "time", strlen(threshold_type)) == 0
+                                && seconds_remaining < 60 * low_threshold) {
+                                START_COLOR("color_bad");
+                                colorful_output = true;
+                        }
+                }
+
                 (void)snprintf(remainingbuf, sizeof(remainingbuf), "%02d:%02d:%02d",
                         max(hours, 0), max(minutes, 0), max(seconds, 0));
 
@@ -127,6 +169,12 @@ void print_battery_info(yajl_gen json_gen, char *buffer, int number, const char 
 
                 (void)snprintf(emptytimebuf, sizeof(emptytimebuf), "%02d:%02d:%02d",
                         max(empty_tm->tm_hour, 0), max(empty_tm->tm_min, 0), max(empty_tm->tm_sec, 0));
+
+                (void)snprintf(consumptionbuf, sizeof(consumptionbuf), "%1.2fW",
+                        ((float)present_rate / 1000.0 / 1000.0));
+
+                if (colorful_output)
+                    END_COLOR;
         }
 #elif defined(__FreeBSD__) || defined(__FreeBSD_kernel__)
         int state;
@@ -134,19 +182,19 @@ void print_battery_info(yajl_gen json_gen, char *buffer, int number, const char 
         size_t sysctl_size = sizeof(sysctl_rslt);
 
         if (sysctlbyname(BATT_LIFE, &sysctl_rslt, &sysctl_size, NULL, 0) != 0) {
-                printf("No battery");
+                OUTPUT_FULL_TEXT("No battery");
                 return;
         }
 
         present_rate = sysctl_rslt;
         if (sysctlbyname(BATT_TIME, &sysctl_rslt, &sysctl_size, NULL, 0) != 0) {
-                printf("No battery");
+                OUTPUT_FULL_TEXT("No battery");
                 return;
         }
 
         remaining = sysctl_rslt;
         if (sysctlbyname(BATT_STATE, &sysctl_rslt, &sysctl_size, NULL,0) != 0) {
-                printf("No battery");
+                OUTPUT_FULL_TEXT("No battery");
                 return;
         }
 
@@ -160,9 +208,7 @@ void print_battery_info(yajl_gen json_gen, char *buffer, int number, const char 
 
         full_design = sysctl_rslt;
 
-        (void)snprintf(statusbuf, sizeof(statusbuf), "%s",
-                        (status == CS_CHARGING ? "CHR" :
-                         (status == CS_DISCHARGING ? "BAT" : "FULL")));
+        (void)snprintf(statusbuf, sizeof(statusbuf), "%s", BATT_STATUS_NAME(status));
 
         (void)snprintf(percentagebuf, sizeof(percentagebuf), "%02d%%",
                        present_rate);
@@ -214,10 +260,7 @@ void print_battery_info(yajl_gen json_gen, char *buffer, int number, const char 
 		break;
 	}
 
-	(void)snprintf(statusbuf, sizeof(statusbuf), "%s",
-		       (ac_status == CS_CHARGING ? "CHR" :
-			(ac_status == CS_DISCHARGING ? "BAT" : "FULL")));
-
+	(void)snprintf(statusbuf, sizeof(statusbuf), "%s", BATT_STATUS_NAME(status));
         (void)snprintf(percentagebuf, sizeof(percentagebuf), "%02d%%", apm_info.battery_life);
 
 	/* Can't give a meaningful value for remaining minutes if we're charging. */
@@ -227,6 +270,16 @@ void print_battery_info(yajl_gen json_gen, char *buffer, int number, const char 
 	(void)snprintf(remainingbuf, sizeof(remainingbuf), (charging ? "%s" : "%d"),
 		       (charging ? "(CHR)" : apm_info.minutes_left));
 #endif
+
+#define EAT_SPACE_FROM_OUTPUT_IF_EMPTY(_buf) \
+        do { \
+                if (strlen(_buf) == 0) { \
+                        if (outwalk > buffer && isspace(outwalk[-1])) \
+                                outwalk--; \
+                        else if (isspace(*(walk+1))) \
+                                walk++; \
+                } \
+        } while (0)
 
         for (walk = format; *walk != '\0'; walk++) {
                 if (*walk != '%') {
@@ -243,9 +296,15 @@ void print_battery_info(yajl_gen json_gen, char *buffer, int number, const char 
                 } else if (strncmp(walk+1, "remaining", strlen("remaining")) == 0) {
                         outwalk += sprintf(outwalk, "%s", remainingbuf);
                         walk += strlen("remaining");
+                        EAT_SPACE_FROM_OUTPUT_IF_EMPTY(remainingbuf);
                 } else if (strncmp(walk+1, "emptytime", strlen("emptytime")) == 0) {
                         outwalk += sprintf(outwalk, "%s", emptytimebuf);
                         walk += strlen("emptytime");
+                        EAT_SPACE_FROM_OUTPUT_IF_EMPTY(emptytimebuf);
+                } else if (strncmp(walk+1, "consumption", strlen("consumption")) == 0) {
+                        outwalk += sprintf(outwalk, "%s", consumptionbuf);
+                        walk += strlen("consumption");
+                        EAT_SPACE_FROM_OUTPUT_IF_EMPTY(consumptionbuf);
                 }
         }
 
