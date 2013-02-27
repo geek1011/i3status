@@ -18,23 +18,21 @@ enum { O_DZEN2, O_XMOBAR, O_I3BAR, O_NONE } output_format;
 
 #define THERMAL_ZONE "/sys/class/thermal/thermal_zone%d/temp"
 
-#elif defined(__FreeBSD__) || defined(__FreeBSD_kernel__)
+#elif defined(__FreeBSD__) || defined(__FreeBSD_kernel__) || defined(__DragonFly__)
 
 /* this needs the coretemp module to be loaded */
+#if defined(__DragonFly__)
+#define THERMAL_ZONE "hw.sensors.cpu%d.temp0"
+#else
 #define THERMAL_ZONE "dev.cpu.%d.temperature"
+#endif
 #define BATT_LIFE "hw.acpi.battery.life"
 #define BATT_TIME "hw.acpi.battery.time"
 #define BATT_STATE "hw.acpi.battery.state"
 
 #elif defined(__OpenBSD__)
-/*
- * Due to the fact there are various ways to obtain a temperature reading, THERMAL_ZONE will need
- * to be adjustable enough for those situations. As it can either be hw.sensors.cpu%d.temp0, or
- * hw.sensors.acpitz%d.temp0 or even something different entirely within hw.sensors.%s.temp0.
- * XXX: For now just check cpu%d.temp0. Adjust this later.
- */
-#define THERMAL_ZONE "cpu%d"
-
+/* Default to acpitz(4) if no path is set. */
+#define THERMAL_ZONE "acpitz%d"
 #endif
 
 #if defined(__FreeBSD_kernel__) && defined(__GLIBC__)
@@ -51,13 +49,13 @@ enum { O_DZEN2, O_XMOBAR, O_I3BAR, O_NONE } output_format;
 
 #define CASE_SEC(name) \
         if (BEGINS_WITH(current, name)) \
-                with(cfg_t *, sec, cfg_getsec(cfg, name)) \
+                with(cfg_t *, sec, cfg_section = cfg_getsec(cfg, name)) \
                         if (sec != NULL)
 
 #define CASE_SEC_TITLE(name) \
         if (BEGINS_WITH(current, name)) \
                 with(const char *, title, current + strlen(name) + 1) \
-                        with(cfg_t *, sec, cfg_gettsec(cfg, name, title)) \
+                        with(cfg_t *, sec, cfg_section = cfg_gettsec(cfg, name, title)) \
                                 if (sec != NULL)
 
 /* Macro which any plugin can use to output the full_text part (when the output
@@ -94,7 +92,11 @@ enum { O_DZEN2, O_XMOBAR, O_I3BAR, O_NONE } output_format;
 #define START_COLOR(colorstr) \
 	do { \
 		if (cfg_getbool(cfg_general, "colors")) { \
-			const char *_val = cfg_getstr(cfg_general, colorstr); \
+			const char *_val = NULL; \
+			if (cfg_section) \
+				_val = cfg_getstr(cfg_section, colorstr); \
+			if (!_val) \
+				_val = cfg_getstr(cfg_general, colorstr); \
 			if (output_format == O_I3BAR) { \
 				yajl_gen_string(json_gen, (const unsigned char *)"color", strlen("color")); \
 				yajl_gen_string(json_gen, (const unsigned char *)_val, strlen(_val)); \
@@ -135,24 +137,27 @@ char *endcolor() __attribute__ ((pure));
 /* src/auto_detect_format.c */
 char *auto_detect_format();
 
+/* src/print_time.c */
+void set_timezone(const char *tz);
+
 void print_ipv6_info(yajl_gen json_gen, char *buffer, const char *format_up, const char *format_down);
 void print_disk_info(yajl_gen json_gen, char *buffer, const char *path, const char *format);
-void print_battery_info(yajl_gen json_gen, char *buffer, int number, const char *path, const char *format, int low_threshold, char *threshold_type, bool last_full_capacity);
-void print_time(yajl_gen json_gen, char *buffer, const char *format, struct tm *current_tm);
-void print_ddate(yajl_gen json_gen, char *buffer, const char *format, struct tm *current_tm);
+void print_battery_info(yajl_gen json_gen, char *buffer, int number, const char *path, const char *format, int low_threshold, char *threshold_type, bool last_full_capacity, bool integer_battery_capacity);
+void print_time(yajl_gen json_gen, char *buffer, const char *format, const char *tz, time_t t);
+void print_ddate(yajl_gen json_gen, char *buffer, const char *format, time_t t);
 const char *get_ip_addr();
 void print_wireless_info(yajl_gen json_gen, char *buffer, const char *interface, const char *format_up, const char *format_down);
 void print_run_watch(yajl_gen json_gen, char *buffer, const char *title, const char *pidfile, const char *format);
-void print_cpu_temperature_info(yajl_gen json_gen, char *buffer, int zone, const char *path, const char *format);
+void print_cpu_temperature_info(yajl_gen json_gen, char *buffer, int zone, const char *path, const char *format, int);
 void print_cpu_usage(yajl_gen json_gen, char *buffer, const char *format);
 void print_eth_info(yajl_gen json_gen, char *buffer, const char *interface, const char *format_up, const char *format_down);
-void print_load(yajl_gen json_gen, char *buffer, const char *format);
+void print_load(yajl_gen json_gen, char *buffer, const char *format, const int max_threshold);
 void print_volume(yajl_gen json_gen, char *buffer, const char *fmt, const char *device, const char *mixer, int mixer_idx);
 bool process_runs(const char *path);
 
 /* socket file descriptor for general purposes */
 extern int general_socket;
 
-extern cfg_t *cfg, *cfg_general;
+extern cfg_t *cfg, *cfg_general, *cfg_section;
 
 #endif

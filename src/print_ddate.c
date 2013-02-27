@@ -95,7 +95,12 @@ static int format_output(char *outwalk, char *format, struct disc_time *dt) {
                                 break;
                         case 'e':
                                 outwalk += sprintf(outwalk, "%d", dt->season_day + 1);
-                                switch (dt->season_day) {
+                                if (dt->season_day > 9 && dt->season_day < 13) {
+                                        outwalk += sprintf(outwalk, "th");
+                                        break;
+                                }
+
+                                switch (dt->season_day % 10) {
                                         case 0:
                                                 outwalk += sprintf(outwalk, "st");
                                                 break;
@@ -180,28 +185,33 @@ struct disc_time *get_ddate(struct tm *current_tm) {
         int is_leap_year = !(current_tm->tm_year % 4) &&
                             (!(current_tm->tm_year % 400) || current_tm->tm_year % 100);
 
-        if (is_leap_year && current_tm->tm_yday == 59) {
+        /* If St. Tib's Day has passed, it will be necessary to skip a day. */
+        int yday = current_tm->tm_yday;
+
+        if (is_leap_year && yday == 59) {
                 /* On St. Tibs Day we don't have to define a date */
                 dt.st_tibs_day = 1;
         } else {
                 dt.st_tibs_day = 0;
-                dt.season_day = current_tm->tm_yday % 73;
-                if (is_leap_year && current_tm->tm_yday > 59) {
-                        dt.week_day = (current_tm->tm_yday - 1) % 5;
-                } else {
-                        dt.week_day = current_tm->tm_yday % 5;
-                }
+                if (is_leap_year && yday > 59)
+                        yday -= 1;
+
+                dt.season_day = yday % 73;
+                dt.week_day = yday % 5;
         }
         dt.year = current_tm->tm_year + 3066;
-        dt.season = current_tm->tm_yday / 73;
+        dt.season = yday / 73;
         return &dt;
 }
 
-void print_ddate(yajl_gen json_gen, char *buffer, const char *format, struct tm *current_tm) {
+void print_ddate(yajl_gen json_gen, char *buffer, const char *format, time_t t) {
         char *outwalk = buffer;
         static char *form = NULL;
+        struct tm current_tm;
         struct disc_time *dt;
-        if ((dt = get_ddate(current_tm)) == NULL)
+        set_timezone(NULL);  /* Use local time. */
+        localtime_r(&t, &current_tm);
+        if ((dt = get_ddate(&current_tm)) == NULL)
                 return;
         if (form == NULL)
                 if ((form = malloc(strlen(format) + 1)) == NULL)

@@ -35,10 +35,17 @@
 
 #define exit_if_null(pointer, ...) { if (pointer == NULL) die(__VA_ARGS__); }
 
+#define CFG_COLOR_OPTS(good, degraded, bad) \
+    CFG_STR("color_good", good, CFGF_NONE), \
+    CFG_STR("color_degraded", degraded, CFGF_NONE), \
+    CFG_STR("color_bad", bad, CFGF_NONE)
+
+#define CFG_CUSTOM_COLOR_OPTS CFG_COLOR_OPTS(NULL, NULL, NULL)
+
 /* socket file descriptor for general purposes */
 int general_socket;
 
-cfg_t *cfg, *cfg_general;
+cfg_t *cfg, *cfg_general, *cfg_section;
 
 /*
  * Exit upon SIGPIPE because when we have nowhere to write to, gathering
@@ -48,6 +55,14 @@ cfg_t *cfg, *cfg_general;
 void sigpipe(int signum) {
         fprintf(stderr, "Received SIGPIPE, exiting\n");
         exit(1);
+}
+
+/*
+ * Do nothing upon SIGUSR1. Running this signal handler will nevertheless
+ * interrupt nanosleep() so that i3status immediately generates new output.
+ *
+ */
+void sigusr1(int signum) {
 }
 
 /*
@@ -179,35 +194,37 @@ int main(int argc, char *argv[]) {
         cfg_opt_t general_opts[] = {
                 CFG_STR("output_format", "auto", CFGF_NONE),
                 CFG_BOOL("colors", 1, CFGF_NONE),
-                CFG_STR("color_good", "#00FF00", CFGF_NONE),
-                CFG_STR("color_degraded", "#FFFF00", CFGF_NONE),
-                CFG_STR("color_bad", "#FF0000", CFGF_NONE),
                 CFG_STR("color_separator", "#333333", CFGF_NONE),
                 CFG_INT("interval", 1, CFGF_NONE),
+                CFG_COLOR_OPTS("#00FF00", "#FFFF00", "#FF0000"),
                 CFG_END()
         };
 
         cfg_opt_t run_watch_opts[] = {
                 CFG_STR("pidfile", NULL, CFGF_NONE),
                 CFG_STR("format", "%title: %status", CFGF_NONE),
+                CFG_CUSTOM_COLOR_OPTS,
                 CFG_END()
         };
 
         cfg_opt_t wireless_opts[] = {
                 CFG_STR("format_up", "W: (%quality at %essid, %bitrate) %ip", CFGF_NONE),
                 CFG_STR("format_down", "W: down", CFGF_NONE),
+                CFG_CUSTOM_COLOR_OPTS,
                 CFG_END()
         };
 
         cfg_opt_t ethernet_opts[] = {
                 CFG_STR("format_up", "E: %ip (%speed)", CFGF_NONE),
                 CFG_STR("format_down", "E: down", CFGF_NONE),
+                CFG_CUSTOM_COLOR_OPTS,
                 CFG_END()
         };
 
         cfg_opt_t ipv6_opts[] = {
                 CFG_STR("format_up", "%ip", CFGF_NONE),
                 CFG_STR("format_down", "no IPv6", CFGF_NONE),
+                CFG_CUSTOM_COLOR_OPTS,
                 CFG_END()
         };
 
@@ -217,11 +234,19 @@ int main(int argc, char *argv[]) {
                 CFG_INT("low_threshold", 30, CFGF_NONE),
                 CFG_STR("threshold_type", "time", CFGF_NONE),
                 CFG_BOOL("last_full_capacity", false, CFGF_NONE),
+                CFG_BOOL("integer_battery_capacity", false, CFGF_NONE),
+                CFG_CUSTOM_COLOR_OPTS,
                 CFG_END()
         };
 
         cfg_opt_t time_opts[] = {
-                CFG_STR("format", "%d.%m.%Y %H:%M:%S", CFGF_NONE),
+                CFG_STR("format", "%Y-%m-%d %H:%M:%S", CFGF_NONE),
+                CFG_END()
+        };
+
+        cfg_opt_t tztime_opts[] = {
+                CFG_STR("format", "%Y-%m-%d %H:%M:%S %Z", CFGF_NONE),
+                CFG_STR("timezone", "", CFGF_NONE),
                 CFG_END()
         };
 
@@ -232,6 +257,8 @@ int main(int argc, char *argv[]) {
 
         cfg_opt_t load_opts[] = {
                 CFG_STR("format", "%1min %5min %15min", CFGF_NONE),
+                CFG_INT("max_threshold", 5, CFGF_NONE),
+                CFG_CUSTOM_COLOR_OPTS,
                 CFG_END()
         };
 
@@ -243,6 +270,8 @@ int main(int argc, char *argv[]) {
         cfg_opt_t temp_opts[] = {
                 CFG_STR("format", "%degrees C", CFGF_NONE),
                 CFG_STR("path", NULL, CFGF_NONE),
+                CFG_INT("max_threshold", 75, CFGF_NONE),
+                CFG_CUSTOM_COLOR_OPTS,
                 CFG_END()
         };
 
@@ -256,6 +285,7 @@ int main(int argc, char *argv[]) {
                 CFG_STR("device", "default", CFGF_NONE),
                 CFG_STR("mixer", "Master", CFGF_NONE),
                 CFG_INT("mixer_idx", 0, CFGF_NONE),
+                CFG_CUSTOM_COLOR_OPTS,
                 CFG_END()
         };
 
@@ -271,9 +301,11 @@ int main(int argc, char *argv[]) {
                 CFG_SEC("volume", volume_opts, CFGF_TITLE | CFGF_MULTI),
                 CFG_SEC("ipv6", ipv6_opts, CFGF_NONE),
                 CFG_SEC("time", time_opts, CFGF_NONE),
+                CFG_SEC("tztime", tztime_opts, CFGF_TITLE | CFGF_MULTI),
                 CFG_SEC("ddate", ddate_opts, CFGF_NONE),
                 CFG_SEC("load", load_opts, CFGF_NONE),
                 CFG_SEC("cpu_usage", usage_opts, CFGF_NONE),
+                CFG_CUSTOM_COLOR_OPTS,
                 CFG_END()
         };
 
@@ -290,6 +322,10 @@ int main(int argc, char *argv[]) {
         memset(&action, 0, sizeof(struct sigaction));
         action.sa_handler = sigpipe;
         sigaction(SIGPIPE, &action, NULL);
+
+        memset(&action, 0, sizeof(struct sigaction));
+        action.sa_handler = sigusr1;
+        sigaction(SIGUSR1, &action, NULL);
 
         if (setlocale(LC_ALL, "") == NULL)
                 die("Could not set locale. Please make sure all your LC_* / LANG settings are correct.");
@@ -377,16 +413,9 @@ int main(int argc, char *argv[]) {
          * (!), not individual plugins, seem very unlikely. */
         char buffer[4096];
 
-        struct tm tm;
         while (1) {
                 struct timeval tv;
                 gettimeofday(&tv, NULL);
-                time_t current_time = tv.tv_sec;
-                struct tm *current_tm = NULL;
-                if (current_time != (time_t) -1) {
-                        localtime_r(&current_time, &tm);
-                        current_tm = &tm;
-                }
                 if (output_format == O_I3BAR)
                         yajl_gen_array_open(json_gen);
                 for (j = 0; j < cfg_size(cfg, "order"); j++) {
@@ -415,7 +444,7 @@ int main(int argc, char *argv[]) {
 
                         CASE_SEC_TITLE("battery") {
                                 SEC_OPEN_MAP("battery");
-                                print_battery_info(json_gen, buffer, atoi(title), cfg_getstr(sec, "path"), cfg_getstr(sec, "format"), cfg_getint(sec, "low_threshold"), cfg_getstr(sec, "threshold_type"), cfg_getbool(sec, "last_full_capacity"));
+                                print_battery_info(json_gen, buffer, atoi(title), cfg_getstr(sec, "path"), cfg_getstr(sec, "format"), cfg_getint(sec, "low_threshold"), cfg_getstr(sec, "threshold_type"), cfg_getbool(sec, "last_full_capacity"), cfg_getbool(sec, "integer_battery_capacity"));
                                 SEC_CLOSE_MAP;
                         }
 
@@ -433,19 +462,25 @@ int main(int argc, char *argv[]) {
 
                         CASE_SEC("load") {
                                 SEC_OPEN_MAP("load");
-                                print_load(json_gen, buffer, cfg_getstr(sec, "format"));
+                                print_load(json_gen, buffer, cfg_getstr(sec, "format"), cfg_getint(sec, "max_threshold"));
                                 SEC_CLOSE_MAP;
                         }
 
                         CASE_SEC("time") {
                                 SEC_OPEN_MAP("time");
-                                print_time(json_gen, buffer, cfg_getstr(sec, "format"), current_tm);
+                                print_time(json_gen, buffer, cfg_getstr(sec, "format"), NULL, tv.tv_sec);
+                                SEC_CLOSE_MAP;
+                        }
+
+                        CASE_SEC_TITLE("tztime") {
+                                SEC_OPEN_MAP("tztime");
+                                print_time(json_gen, buffer, cfg_getstr(sec, "format"), cfg_getstr(sec, "timezone"), tv.tv_sec);
                                 SEC_CLOSE_MAP;
                         }
 
                         CASE_SEC("ddate") {
                                 SEC_OPEN_MAP("ddate");
-                                print_ddate(json_gen, buffer, cfg_getstr(sec, "format"), current_tm);
+                                print_ddate(json_gen, buffer, cfg_getstr(sec, "format"), tv.tv_sec);
                                 SEC_CLOSE_MAP;
                         }
 
@@ -460,7 +495,7 @@ int main(int argc, char *argv[]) {
 
                         CASE_SEC_TITLE("cpu_temperature") {
                                 SEC_OPEN_MAP("cpu_temperature");
-                                print_cpu_temperature_info(json_gen, buffer, atoi(title), cfg_getstr(sec, "path"), cfg_getstr(sec, "format"));
+                                print_cpu_temperature_info(json_gen, buffer, atoi(title), cfg_getstr(sec, "path"), cfg_getstr(sec, "format"), cfg_getint(sec, "max_threshold"));
                                 SEC_CLOSE_MAP;
                         }
 
@@ -489,10 +524,11 @@ int main(int argc, char *argv[]) {
                 /* To provide updates on every full second (as good as possible)
                  * we don’t use sleep(interval) but we sleep until the next
                  * second (with microsecond precision) plus (interval-1)
-                 * seconds. */
+                 * seconds. We also align to 60 seconds modulo interval such
+                 * that we start with :00 on every new minute. */
                 struct timeval current_timeval;
                 gettimeofday(&current_timeval, NULL);
-                struct timespec ts = {interval - 1, (10e5 - current_timeval.tv_usec) * 1000};
+                struct timespec ts = {interval - 1 - (current_timeval.tv_sec % interval), (10e5 - current_timeval.tv_usec) * 1000};
                 nanosleep(&ts, NULL);
         }
 }

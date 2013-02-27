@@ -11,7 +11,7 @@
 #include <alloca.h>
 #endif
 
-#ifdef __FreeBSD__
+#if defined(__FreeBSD__) || defined(__DragonFly__)
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/soundcard.h>
@@ -51,6 +51,7 @@ static void free_hdl(struct mixer_hdl *hdl) {
 
 void print_volume(yajl_gen json_gen, char *buffer, const char *fmt, const char *device, const char *mixer, int mixer_idx) {
         char *outwalk = buffer;
+	int pbval = 1;
 
         /* Printing volume only works with ALSA at the moment */
         if (output_format == O_I3BAR) {
@@ -152,12 +153,11 @@ void print_volume(yajl_gen json_gen, char *buffer, const char *fmt, const char *
 	} else avg = (int)val;
 
 	/* Check for mute */
-	int pbval;
 	if (snd_mixer_selem_has_playback_switch(hdl->elem)) {
 		if ((err = snd_mixer_selem_get_playback_switch(hdl->elem, 0, &pbval)) < 0)
 			fprintf (stderr, "i3status: ALSA: playback_switch: %s\n", snd_strerror(err));
 		if (!pbval)  {
-			START_COLOR("color_bad");
+			START_COLOR("color_degraded");
 			avg = 0;
 		}
 	}
@@ -174,7 +174,7 @@ void print_volume(yajl_gen json_gen, char *buffer, const char *fmt, const char *
 		}
 	}
 #endif
-#if defined(__FreeBSD__) || defined(__OpenBSD__)
+#if defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__DragonFly__)
         char mixerpath[] = "/dev/mixer";
         int mixfd, vol, devmask = 0;
 
