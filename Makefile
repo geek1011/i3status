@@ -19,8 +19,8 @@ CFLAGS+=-Iinclude
 LIBS+=-lconfuse
 LIBS+=-lyajl
 
-VERSION=2.6
-GIT_VERSION="2.6 (2012-10-03)"
+VERSION=2.7
+GIT_VERSION="2.7 (2013-02-27)"
 
 ifeq ($(shell uname),Linux)
 CPPFLAGS+=-DLINUX
@@ -39,6 +39,13 @@ LDFLAGS+=-L/usr/local/lib/
 LIBS+=-lossaudio
 endif
 
+# This probably applies for any pkgsrc based system
+ifeq ($(shell uname),DragonFly)
+CFLAGS+=-I/usr/pkg/include/
+LDFLAGS+=-L/usr/pkg/lib/
+endif
+
+
 CFLAGS+=$(EXTRA_CFLAGS)
 
 # Fallback for libyajl 1 which did not include yajl_version.h. We need
@@ -48,7 +55,7 @@ CFLAGS += -idirafter yajl-fallback
 OBJS:=$(wildcard src/*.c *.c)
 OBJS:=$(OBJS:.c=.o)
 
-src/%.o: src/%.c
+src/%.o: src/%.c include/i3status.h
 	@$(CC) $(CPPFLAGS) $(CFLAGS) -c -o $@ $<
 	@echo " CC $<"
 

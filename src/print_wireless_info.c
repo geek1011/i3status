@@ -25,6 +25,30 @@
 #define IW_ESSID_MAX_SIZE IEEE80211_NWID_LEN
 #endif
 
+#ifdef __DragonFly__
+#include <sys/param.h>
+#include <sys/ioctl.h>
+#include <sys/socket.h>
+#include <ifaddrs.h>
+#include <net/if.h>
+#include <net/if_media.h>
+#include <netproto/802_11/ieee80211.h>
+#include <netproto/802_11/ieee80211_ioctl.h>
+#include <unistd.h>
+#define IW_ESSID_MAX_SIZE IEEE80211_NWID_LEN
+#endif
+
+#ifdef __OpenBSD__
+#include <sys/ioctl.h>
+#include <sys/socket.h>
+#include <net/if.h>
+#include <sys/types.h>
+#include <netinet/in.h>
+#include <netinet/if_ether.h>
+#include <net80211/ieee80211.h>
+#include <net80211/ieee80211_ioctl.h>
+#endif
+
 #include "i3status.h"
 
 #define WIRELESS_INFO_FLAG_HAS_ESSID                    (1 << 0)
@@ -67,6 +91,15 @@ static int get_wireless_info(const char *interface, wireless_info_t *info) {
                 info->flags |= WIRELESS_INFO_FLAG_HAS_ESSID;
                 strncpy(&info->essid[0], wcfg.essid, IW_ESSID_MAX_SIZE);
                 info->essid[IW_ESSID_MAX_SIZE] = '\0';
+        }
+
+        /* If the function iw_get_stats does not return proper stats, the
+           wifi is considered as down.
+           Since ad-hoc network does not have theses stats, we need to return
+           here for this mode. */
+        if (wcfg.mode == 1) {
+                close(skfd);
+                return 1;
         }
 
         /* Wireless quality is a relative value in a driver-specific range.
@@ -159,7 +192,7 @@ static int get_wireless_info(const char *interface, wireless_info_t *info) {
         close(skfd);
         return 1;
 #endif
-#ifdef __FreeBSD__
+#if defined(__FreeBSD__) || defined(__DragonFly__)
         int s, len, inwid;
         uint8_t buf[24 * 1024], *cp;
         struct ieee80211req na;
@@ -220,6 +253,70 @@ static int get_wireless_info(const char *interface, wireless_info_t *info) {
 
         return 1;
 #endif
+#ifdef __OpenBSD__
+	struct ifreq ifr;
+	struct ieee80211_bssid bssid;
+	struct ieee80211_nwid nwid;
+	struct ieee80211_nodereq nr;
+
+	struct ether_addr ea;
+
+        int s, len, ibssid, inwid;
+	u_int8_t zero_bssid[IEEE80211_ADDR_LEN];
+
+	if ((s = socket(AF_INET, SOCK_DGRAM, 0)) == -1)
+		return (0);
+
+        memset(&ifr, 0, sizeof(ifr));
+        ifr.ifr_data = (caddr_t)&nwid;
+	(void)strlcpy(ifr.ifr_name, interface, sizeof(ifr.ifr_name));
+        inwid = ioctl(s, SIOCG80211NWID, (caddr_t)&ifr);
+
+	memset(&bssid, 0, sizeof(bssid));
+	strlcpy(bssid.i_name, interface, sizeof(bssid.i_name));
+	ibssid = ioctl(s, SIOCG80211BSSID, &bssid);
+
+	if (ibssid != 0 || inwid != 0) {
+		close(s);
+		return 0;
+	}
+
+	/* NWID */
+	{
+		if (nwid.i_len <= IEEE80211_NWID_LEN)
+			len = nwid.i_len + 1;
+		else
+			len = IEEE80211_NWID_LEN + 1;
+
+		strncpy(&info->essid[0], nwid.i_nwid, len);
+		info->essid[IW_ESSID_MAX_SIZE] = '\0';
+		info->flags |= WIRELESS_INFO_FLAG_HAS_ESSID;
+	}
+
+	/* Signal strength */
+	{
+		memset(&zero_bssid, 0, sizeof(zero_bssid));
+		if (ibssid == 0 && memcmp(bssid.i_bssid, zero_bssid, IEEE80211_ADDR_LEN) != 0) {
+			memcpy(&ea.ether_addr_octet, bssid.i_bssid, sizeof(ea.ether_addr_octet));
+
+			bzero(&nr, sizeof(nr));
+			bcopy(bssid.i_bssid, &nr.nr_macaddr, sizeof(nr.nr_macaddr));
+			strlcpy(nr.nr_ifname, interface, sizeof(nr.nr_ifname));
+
+			if (ioctl(s, SIOCG80211NODE, &nr) == 0 && nr.nr_rssi) {
+				if (nr.nr_max_rssi)
+					info->signal_level_max = IEEE80211_NODEREQ_RSSI(&nr);
+				else
+					info->signal_level = nr.nr_rssi;
+
+		                info->flags |= WIRELESS_INFO_FLAG_HAS_SIGNAL;
+			}
+		}
+	}
+
+	close(s);
+	return 1;
+#endif
 	return 0;
 }
 
@@ -230,12 +327,20 @@ void print_wireless_info(yajl_gen json_gen, char *buffer, const char *interface,
 
         INSTANCE(interface);
 
+	const char *ip_address = get_ip_addr(interface);
+	if (ip_address == NULL) {
+		START_COLOR("color_bad");
+		outwalk += sprintf(outwalk, "%s", format_down);
+		goto out;
+	}
+
         if (get_wireless_info(interface, &info)) {
                 walk = format_up;
                 if (info.flags & WIRELESS_INFO_FLAG_HAS_QUALITY)
                         START_COLOR((info.quality < info.quality_average ? "color_degraded" : "color_good"));
-        }
-        else {
+                else
+                        START_COLOR("color_good");
+        } else {
                 walk = format_down;
                 START_COLOR("color_bad");
         }
@@ -291,9 +396,8 @@ void print_wireless_info(yajl_gen json_gen, char *buffer, const char *interface,
                 }
 
                 if (BEGINS_WITH(walk+1, "ip")) {
-                        const char *ip_address = get_ip_addr(interface);
-                        outwalk += sprintf(outwalk, "%s", (ip_address ? ip_address : "no IP"));
-                        walk += strlen("ip");
+			outwalk += sprintf(outwalk, "%s", ip_address);
+			walk += strlen("ip");
                 }
 
 #ifdef LINUX
@@ -308,6 +412,7 @@ void print_wireless_info(yajl_gen json_gen, char *buffer, const char *interface,
 #endif
         }
 
+out:
         END_COLOR;
         OUTPUT_FULL_TEXT(buffer);
 }

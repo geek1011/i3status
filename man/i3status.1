@@ -2,12 +2,12 @@
 .\"     Title: i3status
 .\"    Author: [see the "AUTHORS" section]
 .\" Generator: DocBook XSL Stylesheets v1.76.1 <http://docbook.sf.net/>
-.\"      Date: 10/03/2012
+.\"      Date: 02/22/2013
 .\"    Manual: i3 Manual
 .\"    Source: i3status v2.6
 .\"  Language: English
 .\"
-.TH "I3STATUS" "1" "10/03/2012" "i3status v2\&.6" "i3 Manual"
+.TH "I3STATUS" "1" "02/22/2013" "i3status v2\&.6" "i3 Manual"
 .\" -----------------------------------------------------------------
 .\" * Define some portability stuff
 .\" -----------------------------------------------------------------
@@ -110,7 +110,8 @@ order += "ethernet eth0"
 order += "battery 0"
 order += "cpu_temperature 0"
 order += "load"
-order += "time"
+order += "tztime local"
+order += "tztime berlin"
 
 wireless wlan0 {
         format_up = "W: (%quality at %essid, %bitrate) %ip"
@@ -137,8 +138,13 @@ run_watch VPN {
         pidfile = "/var/run/vpnc/pid"
 }
 
-time {
+tztime local {
         format = "%Y\-%m\-%d %H:%M:%S"
+}
+
+tztime berlin {
+        format = "%Y\-%m\-%d %H:%M:%S %Z"
+        timezone = "Europe/Berlin"
 }
 
 load {
@@ -199,6 +205,8 @@ none
 .RS 4
 Does not use any color codes\&. Separates values by the pipe symbol\&. This should be used with i3bar and can be used for custom scripts\&.
 .RE
+.sp
+It\(cqs also possible to use the color_good, color_degraded, color_bad directives to define specific colors per module\&. If one of these directives is defined in a module section its value will override the value defined in the general section just for this module\&.
 .SS "IPv6"
 .sp
 This module gets the IPv6 address used for outgoing connections (that is, the best available public IPv6 address on your computer)\&.
@@ -242,6 +250,8 @@ Gets the IP address and (if possible) the link speed of the given ethernet inter
 .sp
 Gets the status (charging, discharging, running), percentage, remaining time and power consumption (in Watts) of the given battery and when it\(cqs estimated to be empty\&. If you want to use the last full capacity instead of the design capacity (when using the design capacity, it may happen that your battery is at 23% when fully charged because it\(cqs old\&. In general, I want to see it this way, because it tells me how worn off my battery is\&.), just specify last_full_capacity = true\&.
 .sp
+If you want the battery percentage to be shown without decimals, add integer_battery_capacity = true\&.
+.sp
 If your battery is represented in a non\-standard path in /sys, be sure to modify the "path" property accordingly\&. The first occurence of %d gets replaced with the battery number, but you can just hard\-code a path as well\&.
 .sp
 It is possible to define a low_threshold that causes the battery text to be colored red\&. The low_threshold type can be of threshold_type "time" or "percentage"\&. So, if you configure low_threshold to 10 and threshold_type to "time", and your battery lasts another 9 minutes, it will be colored red\&.
@@ -255,11 +265,13 @@ It is possible to define a low_threshold that causes the battery text to be colo
 \fBExample threshold_type\fR: time
 .SS "CPU\-Temperature"
 .sp
-Gets the temperature of the given thermal zone\&.
+Gets the temperature of the given thermal zone\&. It is possible to define a max_threshold that will color the temperature red in case the specified thermal zone is getting too hot\&. Defaults to 75 degrees C\&.
 .sp
 \fBExample order\fR: cpu_temperature 0
 .sp
 \fBExample format\fR: T: %degrees \(deC
+.sp
+\fBExample max_threshold\fR: 42
 .SS "CPU Usage"
 .sp
 Gets the percentual CPU usage from /proc/stat (Linux) or sysctl(3) (FreeBSD/OpenBSD)\&.
@@ -269,18 +281,29 @@ Gets the percentual CPU usage from /proc/stat (Linux) or sysctl(3) (FreeBSD/Open
 \fBExample format\fR: %usage
 .SS "Load"
 .sp
-Gets the system load (number of processes waiting for CPU time in the last 1, 5 and 15 minutes)\&.
+Gets the system load (number of processes waiting for CPU time in the last 1, 5 and 15 minutes)\&. It is possible to define a max_threshold that will color the load value red in case the load average of the last minute is getting higher than the configured threshold\&. Defaults to 5\&.
 .sp
 \fBExample order\fR: load
 .sp
 \fBExample format\fR: %1min %5min %15min
+.sp
+\fBExample max_threshold\fR: 5
 .SS "Time"
 .sp
-Formats the current system time\&. See strftime(3) for the format\&.
+Outputs the current time in the local timezone\&. To use a different timezone, you can set the TZ environment variable, or use the tztime module\&. See strftime(3) for details on the format string\&.
 .sp
 \fBExample order\fR: time
 .sp
 \fBExample format\fR: %Y\-%m\-%d %H:%M:%S
+.SS "TzTime"
+.sp
+Outputs the current time in the given timezone\&. If no timezone is given, local time will be used\&. See strftime(3) for details on the format string\&. The system\(cqs timezone database is usually installed in /usr/share/zoneinfo\&. Files below that path make for valid timezone strings, e\&.g\&. for /usr/share/zoneinfo/Europe/Berlin you can set timezone to Europe/Berlin in the tztime module\&.
+.sp
+\fBExample order\fR: tztime berlin
+.sp
+\fBExample format\fR: %Y\-%m\-%d %H:%M:%S %Z
+.sp
+\fBExample timezone\fR: Europe/Berlin
 .SS "DDate"
 .sp
 Outputs the current discordian date in user\-specified format\&. See ddate(1) for details on the format string\&. \fBNote\fR: Neither \fB%\&.\fR nor \fB%X\fR are implemented yet\&.
@@ -380,6 +403,9 @@ done
 Put that in some script, say \&.bin/my_i3status\&.sh and execute that instead of i3status\&.
 .sp
 Note that if you want to use the JSON output format (with colors in i3bar), you need to use a slightly more complex wrapper script\&. There are examples in the contrib/ folder, see http://code\&.i3wm\&.org/i3status/tree/contrib
+.SH "SIGNALS"
+.sp
+When receiving SIGUSR1, i3status\(cqs nanosleep() will be interrupted and thus you will force an update\&. You can use killall \-USR1 i3status to force an update after changing the system volume, for example\&.
 .SH "SEE ALSO"
 .sp
 strftime(3), date(1), glob(3), dzen2(1), xmobar(1)
