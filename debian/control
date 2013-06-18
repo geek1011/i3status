@@ -3,10 +3,10 @@ Section: utils
 Priority: extra
 Maintainer: Michael Stapelberg <stapelberg@debian.org>
 Build-Depends: debhelper (>= 7.0.50~), libiw-dev [linux-any], libconfuse-dev, asciidoc, xmlto, libcap2-bin [linux-any], libasound2-dev [linux-any], libbsd-dev [kfreebsd-any], libyajl-dev
-Standards-Version: 3.9.3
+Standards-Version: 3.9.4
 Homepage: http://i3wm.org/i3status
-Vcs-Git: git://git.debian.org/users/stapelberg/i3status.git
-Vcs-Browser: http://git.debian.org/?p=users/stapelberg/i3status.git;a=summary
+Vcs-Git: git://anonscm.debian.org/users/stapelberg/i3status.git
+Vcs-Browser: http://anonscm.debian.org/gitweb/?p=users/stapelberg/i3status.git
 
 Package: i3status
 Architecture: any

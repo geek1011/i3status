@@ -1,3 +1,13 @@
+i3status (2.7-2) unstable; urgency=low
+
+  * experimental to unstable because i3status 2.7 was only in experimental due
+    to the freeze.
+  * canonicalize vcs fields
+  * bump standards-version to 3.9.4 (no changes necessary)
+  * Patch Makefile to enable verbose build
+
+ -- Michael Stapelberg <stapelberg@debian.org>  Tue, 18 Jun 2013 08:06:37 +0200
+
 i3status (2.7-1) experimental; urgency=low
 
   * New upstream release
