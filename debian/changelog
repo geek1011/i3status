@@ -1,8 +1,12 @@
 i3status (2.8-1) unstable; urgency=low
 
   * New upstream release
+  * drop verbose_build.patch (applied upstream)
+  * use dh(1) and debhelper 9
+  * bump standards-version to 3.9.5 (no changes necessary)
+  * debian/watch: add pgpsigurlmangle=, update URL
 
- -- Michael Stapelberg <stapelberg@debian.org>  Sun, 05 Jan 2014 12:28:52 +0100
+ -- Michael Stapelberg <stapelberg@debian.org>  Sun, 05 Jan 2014 12:46:32 +0100
 
 i3status (2.7-2) unstable; urgency=low
 
