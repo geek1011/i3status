@@ -1,9 +1,6 @@
 #!/usr/bin/make -f
 # vim:ts=8:sw=8:noexpandtab
 
-DPKG_EXPORT_BUILDFLAGS = 1
--include /usr/share/dpkg/buildflags.mk
-
 # for verbose builds
 export V:=1
 
