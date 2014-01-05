@@ -2,12 +2,12 @@
 .\"     Title: i3status
 .\"    Author: [see the "AUTHORS" section]
 .\" Generator: DocBook XSL Stylesheets v1.76.1 <http://docbook.sf.net/>
-.\"      Date: 02/22/2013
+.\"      Date: 01/05/2014
 .\"    Manual: i3 Manual
-.\"    Source: i3status v2.6
+.\"    Source: i3status v2.8
 .\"  Language: English
 .\"
-.TH "I3STATUS" "1" "02/22/2013" "i3status v2\&.6" "i3 Manual"
+.TH "I3STATUS" "1" "01/05/2014" "i3status v2\&.8" "i3 Manual"
 .\" -----------------------------------------------------------------
 .\" * Define some portability stuff
 .\" -----------------------------------------------------------------
@@ -28,7 +28,7 @@
 .\" * MAIN CONTENT STARTS HERE *
 .\" -----------------------------------------------------------------
 .SH "NAME"
-i3status \- Generates a status line for dzen2 or xmobar
+i3status \- Generates a status line for i3bar, dzen2 or xmobar
 .SH "SYNOPSIS"
 .sp
 i3status [\-c configfile] [\-h] [\-v]
@@ -104,7 +104,8 @@ general {
 order += "ipv6"
 order += "disk /"
 order += "run_watch DHCP"
-order += "run_watch VPN"
+order += "run_watch VPNC"
+order += "path_exists VPN"
 order += "wireless wlan0"
 order += "ethernet eth0"
 order += "battery 0"
@@ -126,6 +127,7 @@ ethernet eth0 {
 
 battery 0 {
         format = "%status %percentage %remaining %emptytime"
+        format_down = "No battery"
         path = "/sys/class/power_supply/BAT%d/uevent"
         low_threshold = 10
 }
@@ -134,8 +136,14 @@ run_watch DHCP {
         pidfile = "/var/run/dhclient*\&.pid"
 }
 
-run_watch VPN {
+run_watch VPNC {
+        # file containing the PID of a vpnc process
         pidfile = "/var/run/vpnc/pid"
+}
+
+path_exists VPN {
+        # path exists when a VPN tunnel launched by nmcli/nm\-applet is active
+        path = "/proc/sys/net/ipv4/conf/tun0"
 }
 
 tztime local {
@@ -201,6 +209,11 @@ xmobar
 xmobar is a minimalistic, text based, status bar\&. It was designed to work with the xmonad Window Manager\&.
 .RE
 .PP
+term
+.RS 4
+Use ANSI Escape sequences to produce a terminal\-output as close as possible to the graphical outputs\&. This makes debugging your config file a little bit easier because the terminal\-output of i3status becomes much more readable, but should only used for such quick glances, because it will only support very basic output\-features (for example you only get 3 bits of color depth)\&.
+.RE
+.PP
 none
 .RS 4
 Does not use any color codes\&. Separates values by the pipe symbol\&. This should be used with i3bar and can be used for custom scripts\&.
@@ -220,16 +233,42 @@ Gets used, free, available and total amount of bytes on the given mounted filesy
 .sp
 These values can also be expressed in percentages with the percentage_used, percentage_free, percentage_avail and percentage_used_of_avail formats\&.
 .sp
+Byte sizes are presented in a human readable format using a set of prefixes whose type can be specified via the "prefix_type" option\&. Three sets of prefixes are available:
+.PP
+binary
+.RS 4
+IEC prefixes (Ki, Mi, Gi, Ti) represent multiples of powers of 1024\&. This is the default\&.
+.RE
+.PP
+decimal
+.RS 4
+SI prefixes (k, M, G, T) represent multiples of powers of 1000\&.
+.RE
+.PP
+custom
+.RS 4
+The custom prefixes (K, M, G, T) represent multiples of powers of 1024\&.
+.RE
+.sp
 \fBExample order\fR: disk /mnt/usbstick
 .sp
 \fBExample format\fR: %free (%avail)/ %total
 .sp
 \fBExample format\fR: %percentage_used used, %percentage_free free, %percentage_avail avail
+.sp
+\fBExample prefix_type\fR: custom
 .SS "Run\-watch"
 .sp
 Expands the given path to a pidfile and checks if the process ID found inside is valid (that is, if the process is running)\&. You can use this to check if a specific application, such as a VPN client or your DHCP client is running\&.
 .sp
 \fBExample order\fR: run_watch DHCP
+.sp
+\fBExample format\fR: %title: %status
+.SS "Path\-exists"
+.sp
+Checks if the given path exists in the filesystem\&. You can use this to check if something is active, like for example a VPN tunnel managed by NetworkManager\&.
+.sp
+\fBExample order\fR: path_exists VPN
 .sp
 \fBExample format\fR: %title: %status
 .SS "Wireless"
@@ -252,7 +291,7 @@ Gets the status (charging, discharging, running), percentage, remaining time and
 .sp
 If you want the battery percentage to be shown without decimals, add integer_battery_capacity = true\&.
 .sp
-If your battery is represented in a non\-standard path in /sys, be sure to modify the "path" property accordingly\&. The first occurence of %d gets replaced with the battery number, but you can just hard\-code a path as well\&.
+If your battery is represented in a non\-standard path in /sys, be sure to modify the "path" property accordingly, i\&.e\&. pointing to the uevent file on your system\&. The first occurence of %d gets replaced with the battery number, but you can just hard\-code a path as well\&.
 .sp
 It is possible to define a low_threshold that causes the battery text to be colored red\&. The low_threshold type can be of threshold_type "time" or "percentage"\&. So, if you configure low_threshold to 10 and threshold_type to "time", and your battery lasts another 9 minutes, it will be colored red\&.
 .sp
@@ -263,6 +302,8 @@ It is possible to define a low_threshold that causes the battery text to be colo
 \fBExample low_threshold\fR: 30
 .sp
 \fBExample threshold_type\fR: time
+.sp
+\fBExample path\fR: /sys/class/power_supply/CMB1/uevent
 .SS "CPU\-Temperature"
 .sp
 Gets the temperature of the given thermal zone\&. It is possible to define a max_threshold that will color the temperature red in case the specified thermal zone is getting too hot\&. Defaults to 75 degrees C\&.
@@ -272,6 +313,8 @@ Gets the temperature of the given thermal zone\&. It is possible to define a max
 \fBExample format\fR: T: %degrees \(deC
 .sp
 \fBExample max_threshold\fR: 42
+.sp
+\fBExample path\fR: /sys/devices/platform/coretemp\&.0/temp1_input
 .SS "CPU Usage"
 .sp
 Gets the percentual CPU usage from /proc/stat (Linux) or sysctl(3) (FreeBSD/OpenBSD)\&.
@@ -287,7 +330,7 @@ Gets the system load (number of processes waiting for CPU time in the last 1, 5 
 .sp
 \fBExample format\fR: %1min %5min %15min
 .sp
-\fBExample max_threshold\fR: 5
+\fBExample max_threshold\fR: "0,1"
 .SS "Time"
 .sp
 Outputs the current time in the local timezone\&. To use a different timezone, you can set the TZ environment variable, or use the tztime module\&. See strftime(3) for details on the format string\&.
@@ -313,11 +356,11 @@ Outputs the current discordian date in user\-specified format\&. See ddate(1) fo
 \fBExample format\fR: %{%a, %b %d%}, %Y%N \- %H
 .SS "Volume"
 .sp
-Outputs the volume of the specified mixer on the specified device\&. Works only on Linux because it uses ALSA\&. A simplified configuration can be used on FreeBSD and OpenBSD due to the lack of ALSA, the device, mixer and mixder_idx options can be ignored on these systems\&. On these systems the OSS API is used instead to query /dev/mixer directly\&.
+Outputs the volume of the specified mixer on the specified device\&. Works only on Linux because it uses ALSA\&. A simplified configuration can be used on FreeBSD and OpenBSD due to the lack of ALSA, the device and mixer options can be ignored on these systems\&. On these systems the OSS API is used instead to query /dev/mixer directly if mixer_dix is \-1, otherwise /dev/mixer+mixer_idx+\&.
 .sp
 \fBExample order\fR: volume master
 .sp
-\fBExample format\fR: ♪: %volume
+\fBExample format\fR: ♪: %volume \fBExample format_muted\fR: ♪: 0%%
 .sp
 \fBExample configuration\fR:
 .sp
@@ -327,6 +370,7 @@ Outputs the volume of the specified mixer on the specified device\&. Works only 
 .nf
 volume master {
         format = "♪: %volume"
+        format_muted = "♪: muted (%volume)"
         device = "default"
         mixer = "Master"
         mixer_idx = 0

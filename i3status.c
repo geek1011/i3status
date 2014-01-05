@@ -45,16 +45,19 @@
 /* socket file descriptor for general purposes */
 int general_socket;
 
+static bool exit_upon_signal = false;
+
 cfg_t *cfg, *cfg_general, *cfg_section;
 
 /*
- * Exit upon SIGPIPE because when we have nowhere to write to, gathering
- * system information is pointless.
+ * Set the exit_upon_signal flag, because one cannot do anything in a safe
+ * manner in a signal handler (e.g. fprintf, which we really want to do for
+ * debugging purposes), see
+ * https://www.securecoding.cert.org/confluence/display/seccode/SIG30-C.+Call+only+asynchronous-safe+functions+within+signal+handlers
  *
  */
-void sigpipe(int signum) {
-        fprintf(stderr, "Received SIGPIPE, exiting\n");
-        exit(1);
+void fatalsig(int signum) {
+        exit_upon_signal = true;
 }
 
 /*
@@ -207,6 +210,13 @@ int main(int argc, char *argv[]) {
                 CFG_END()
         };
 
+        cfg_opt_t path_exists_opts[] = {
+                CFG_STR("path", NULL, CFGF_NONE),
+                CFG_STR("format", "%title: %status", CFGF_NONE),
+                CFG_CUSTOM_COLOR_OPTS,
+                CFG_END()
+        };
+
         cfg_opt_t wireless_opts[] = {
                 CFG_STR("format_up", "W: (%quality at %essid, %bitrate) %ip", CFGF_NONE),
                 CFG_STR("format_down", "W: down", CFGF_NONE),
@@ -230,6 +240,7 @@ int main(int argc, char *argv[]) {
 
         cfg_opt_t battery_opts[] = {
                 CFG_STR("format", "%status %percentage %remaining", CFGF_NONE),
+                CFG_STR("format_down", "No battery", CFGF_NONE),
                 CFG_STR("path", "/sys/class/power_supply/BAT%d/uevent", CFGF_NONE),
                 CFG_INT("low_threshold", 30, CFGF_NONE),
                 CFG_STR("threshold_type", "time", CFGF_NONE),
@@ -257,7 +268,7 @@ int main(int argc, char *argv[]) {
 
         cfg_opt_t load_opts[] = {
                 CFG_STR("format", "%1min %5min %15min", CFGF_NONE),
-                CFG_INT("max_threshold", 5, CFGF_NONE),
+                CFG_FLOAT("max_threshold", 5, CFGF_NONE),
                 CFG_CUSTOM_COLOR_OPTS,
                 CFG_END()
         };
@@ -277,11 +288,13 @@ int main(int argc, char *argv[]) {
 
         cfg_opt_t disk_opts[] = {
                 CFG_STR("format", "%free", CFGF_NONE),
+                CFG_STR("prefix_type", "binary", CFGF_NONE),
                 CFG_END()
         };
 
         cfg_opt_t volume_opts[] = {
                 CFG_STR("format", "♪: %volume", CFGF_NONE),
+                CFG_STR("format_muted", "♪: 0%%", CFGF_NONE),
                 CFG_STR("device", "default", CFGF_NONE),
                 CFG_STR("mixer", "Master", CFGF_NONE),
                 CFG_INT("mixer_idx", 0, CFGF_NONE),
@@ -293,6 +306,7 @@ int main(int argc, char *argv[]) {
                 CFG_STR_LIST("order", "{}", CFGF_NONE),
                 CFG_SEC("general", general_opts, CFGF_NONE),
                 CFG_SEC("run_watch", run_watch_opts, CFGF_TITLE | CFGF_MULTI),
+                CFG_SEC("path_exists", path_exists_opts, CFGF_TITLE | CFGF_MULTI),
                 CFG_SEC("wireless", wireless_opts, CFGF_TITLE | CFGF_MULTI),
                 CFG_SEC("ethernet", ethernet_opts, CFGF_TITLE | CFGF_MULTI),
                 CFG_SEC("battery", battery_opts, CFGF_TITLE | CFGF_MULTI),
@@ -320,8 +334,15 @@ int main(int argc, char *argv[]) {
 
         struct sigaction action;
         memset(&action, 0, sizeof(struct sigaction));
-        action.sa_handler = sigpipe;
+        action.sa_handler = fatalsig;
+
+        /* Exit upon SIGPIPE because when we have nowhere to write to, gathering system
+         * information is pointless. Also exit explicitly on SIGTERM and SIGINT because
+         * only this will trigger a reset of the cursor in the terminal output-format.
+         */
         sigaction(SIGPIPE, &action, NULL);
+        sigaction(SIGTERM, &action, NULL);
+        sigaction(SIGINT, &action, NULL);
 
         memset(&action, 0, sizeof(struct sigaction));
         action.sa_handler = sigusr1;
@@ -375,6 +396,8 @@ int main(int argc, char *argv[]) {
                 output_format = O_XMOBAR;
         else if (strcasecmp(output_str, "i3bar") == 0)
                 output_format = O_I3BAR;
+        else if (strcasecmp(output_str, "term") == 0)
+                output_format = O_TERM;
         else if (strcasecmp(output_str, "none") == 0)
                 output_format = O_NONE;
         else die("Unknown output format: \"%s\"\n", output_str);
@@ -399,6 +422,12 @@ int main(int argc, char *argv[]) {
                 yajl_gen_array_open(json_gen);
                 yajl_gen_clear(json_gen);
         }
+        if (output_format == O_TERM) {
+                /* Save the cursor-position and hide the cursor */
+                printf("\033[s\033[?25l");
+                /* Undo at exit */
+                atexit(&reset_cursor);
+        }
 
         if ((general_socket = socket(AF_INET, SOCK_DGRAM, 0)) == -1)
                 die("Could not create socket\n");
@@ -414,10 +443,17 @@ int main(int argc, char *argv[]) {
         char buffer[4096];
 
         while (1) {
+                if (exit_upon_signal) {
+                        fprintf(stderr, "Exiting due to signal.\n");
+                        exit(1);
+                }
                 struct timeval tv;
                 gettimeofday(&tv, NULL);
                 if (output_format == O_I3BAR)
                         yajl_gen_array_open(json_gen);
+                else if (output_format == O_TERM)
+                        /* Restore the cursor-position, clear line */
+                        printf("\033[u\033[K");
                 for (j = 0; j < cfg_size(cfg, "order"); j++) {
                         if (j > 0)
                                 print_seperator();
@@ -444,7 +480,7 @@ int main(int argc, char *argv[]) {
 
                         CASE_SEC_TITLE("battery") {
                                 SEC_OPEN_MAP("battery");
-                                print_battery_info(json_gen, buffer, atoi(title), cfg_getstr(sec, "path"), cfg_getstr(sec, "format"), cfg_getint(sec, "low_threshold"), cfg_getstr(sec, "threshold_type"), cfg_getbool(sec, "last_full_capacity"), cfg_getbool(sec, "integer_battery_capacity"));
+                                print_battery_info(json_gen, buffer, atoi(title), cfg_getstr(sec, "path"), cfg_getstr(sec, "format"), cfg_getstr(sec, "format_down"), cfg_getint(sec, "low_threshold"), cfg_getstr(sec, "threshold_type"), cfg_getbool(sec, "last_full_capacity"), cfg_getbool(sec, "integer_battery_capacity"));
                                 SEC_CLOSE_MAP;
                         }
 
@@ -454,15 +490,21 @@ int main(int argc, char *argv[]) {
                                 SEC_CLOSE_MAP;
                         }
 
+                        CASE_SEC_TITLE("path_exists") {
+                                SEC_OPEN_MAP("path_exists");
+                                print_path_exists(json_gen, buffer, title, cfg_getstr(sec, "path"), cfg_getstr(sec, "format"));
+                                SEC_CLOSE_MAP;
+                        }
+
                         CASE_SEC_TITLE("disk") {
                                 SEC_OPEN_MAP("disk_info");
-                                print_disk_info(json_gen, buffer, title, cfg_getstr(sec, "format"));
+                                print_disk_info(json_gen, buffer, title, cfg_getstr(sec, "format"), cfg_getstr(sec, "prefix_type"));
                                 SEC_CLOSE_MAP;
                         }
 
                         CASE_SEC("load") {
                                 SEC_OPEN_MAP("load");
-                                print_load(json_gen, buffer, cfg_getstr(sec, "format"), cfg_getint(sec, "max_threshold"));
+                                print_load(json_gen, buffer, cfg_getstr(sec, "format"), cfg_getfloat(sec, "max_threshold"));
                                 SEC_CLOSE_MAP;
                         }
 
@@ -487,6 +529,7 @@ int main(int argc, char *argv[]) {
                         CASE_SEC_TITLE("volume") {
                                 SEC_OPEN_MAP("volume");
                                 print_volume(json_gen, buffer, cfg_getstr(sec, "format"),
+                                             cfg_getstr(sec, "format_muted"),
                                              cfg_getstr(sec, "device"),
                                              cfg_getstr(sec, "mixer"),
                                              cfg_getint(sec, "mixer_idx"));

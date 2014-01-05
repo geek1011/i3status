@@ -1,7 +1,7 @@
 #ifndef _I3STATUS_H
 #define _I3STATUS_H
 
-enum { O_DZEN2, O_XMOBAR, O_I3BAR, O_NONE } output_format;
+enum { O_DZEN2, O_XMOBAR, O_I3BAR, O_TERM, O_NONE } output_format;
 
 #include <stdbool.h>
 #include <confuse.h>
@@ -33,6 +33,9 @@ enum { O_DZEN2, O_XMOBAR, O_I3BAR, O_NONE } output_format;
 #elif defined(__OpenBSD__)
 /* Default to acpitz(4) if no path is set. */
 #define THERMAL_ZONE "acpitz%d"
+#elif defined(__NetBSD__)
+/* Rely on envsys(4). The key of the sensor is generally cpu%d temperature */
+#define THERMAL_ZONE "cpu%d temperature"
 #endif
 
 #if defined(__FreeBSD_kernel__) && defined(__GLIBC__)
@@ -133,6 +136,7 @@ bool slurp(const char *filename, char *destination, int size);
 void print_seperator();
 char *color(const char *colorstr);
 char *endcolor() __attribute__ ((pure));
+void reset_cursor(void);
 
 /* src/auto_detect_format.c */
 char *auto_detect_format();
@@ -141,18 +145,19 @@ char *auto_detect_format();
 void set_timezone(const char *tz);
 
 void print_ipv6_info(yajl_gen json_gen, char *buffer, const char *format_up, const char *format_down);
-void print_disk_info(yajl_gen json_gen, char *buffer, const char *path, const char *format);
-void print_battery_info(yajl_gen json_gen, char *buffer, int number, const char *path, const char *format, int low_threshold, char *threshold_type, bool last_full_capacity, bool integer_battery_capacity);
+void print_disk_info(yajl_gen json_gen, char *buffer, const char *path, const char *format, const char *prefix_type);
+void print_battery_info(yajl_gen json_gen, char *buffer, int number, const char *path, const char *format, const char *format_down, int low_threshold, char *threshold_type, bool last_full_capacity, bool integer_battery_capacity);
 void print_time(yajl_gen json_gen, char *buffer, const char *format, const char *tz, time_t t);
 void print_ddate(yajl_gen json_gen, char *buffer, const char *format, time_t t);
 const char *get_ip_addr();
 void print_wireless_info(yajl_gen json_gen, char *buffer, const char *interface, const char *format_up, const char *format_down);
 void print_run_watch(yajl_gen json_gen, char *buffer, const char *title, const char *pidfile, const char *format);
+void print_path_exists(yajl_gen json_gen, char *buffer, const char *title, const char *path, const char *format);
 void print_cpu_temperature_info(yajl_gen json_gen, char *buffer, int zone, const char *path, const char *format, int);
 void print_cpu_usage(yajl_gen json_gen, char *buffer, const char *format);
 void print_eth_info(yajl_gen json_gen, char *buffer, const char *interface, const char *format_up, const char *format_down);
-void print_load(yajl_gen json_gen, char *buffer, const char *format, const int max_threshold);
-void print_volume(yajl_gen json_gen, char *buffer, const char *fmt, const char *device, const char *mixer, int mixer_idx);
+void print_load(yajl_gen json_gen, char *buffer, const char *format, const float max_threshold);
+void print_volume(yajl_gen json_gen, char *buffer, const char *fmt, const char *fmt_muted, const char *device, const char *mixer, int mixer_idx);
 bool process_runs(const char *path);
 
 /* socket file descriptor for general purposes */

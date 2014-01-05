@@ -1,11 +1,11 @@
 i3status(1)
 ===========
 Michael Stapelberg <michael@i3wm.org>
-v2.6, October 2012
+v2.8, January 2014
 
 == NAME
 
-i3status - Generates a status line for dzen2 or xmobar
+i3status - Generates a status line for i3bar, dzen2 or xmobar
 
 == SYNOPSIS
 
@@ -50,7 +50,8 @@ general {
 order += "ipv6"
 order += "disk /"
 order += "run_watch DHCP"
-order += "run_watch VPN"
+order += "run_watch VPNC"
+order += "path_exists VPN"
 order += "wireless wlan0"
 order += "ethernet eth0"
 order += "battery 0"
@@ -72,6 +73,7 @@ ethernet eth0 {
 
 battery 0 {
         format = "%status %percentage %remaining %emptytime"
+        format_down = "No battery"
         path = "/sys/class/power_supply/BAT%d/uevent"
         low_threshold = 10
 }
@@ -80,8 +82,14 @@ run_watch DHCP {
         pidfile = "/var/run/dhclient*.pid"
 }
 
-run_watch VPN {
+run_watch VPNC {
+        # file containing the PID of a vpnc process
         pidfile = "/var/run/vpnc/pid"
+}
+
+path_exists VPN {
+        # path exists when a VPN tunnel launched by nmcli/nm-applet is active
+        path = "/proc/sys/net/ipv4/conf/tun0"
 }
 
 tztime local {
@@ -145,6 +153,12 @@ managers like dwm, wmii and xmonad though it will work with any windowmanger
 xmobar::
 xmobar is a minimalistic, text based, status bar. It was designed to work
 with the xmonad Window Manager.
+term::
+Use ANSI Escape sequences to produce a terminal-output as close as possible to
+the graphical outputs. This makes debugging your config file a little bit
+easier because the terminal-output of i3status becomes much more readable, but
+should only used for such quick glances, because it will only support very
+basic output-features (for example you only get 3 bits of color depth).
 none::
 Does not use any color codes. Separates values by the pipe symbol. This should
 be used with i3bar and can be used for custom scripts.
@@ -170,11 +184,25 @@ Gets used, free, available and total amount of bytes on the given mounted filesy
 These values can also be expressed in percentages with the percentage_used,
 percentage_free, percentage_avail and percentage_used_of_avail formats.
 
+Byte sizes are presented in a human readable format using a set of prefixes
+whose type can be specified via the "prefix_type" option. Three sets of
+prefixes are available:
+
+binary::
+IEC prefixes (Ki, Mi, Gi, Ti) represent multiples of powers of 1024.
+This is the default.
+decimal::
+SI prefixes (k, M, G, T) represent multiples of powers of 1000.
+custom::
+The custom prefixes (K, M, G, T) represent multiples of powers of 1024.
+
 *Example order*: +disk /mnt/usbstick+
 
 *Example format*: +%free (%avail)/ %total+
 
 *Example format*: +%percentage_used used, %percentage_free free, %percentage_avail avail+
+
+*Example prefix_type*: +custom+
 
 === Run-watch
 
@@ -183,6 +211,15 @@ is valid (that is, if the process is running). You can use this to check if
 a specific application, such as a VPN client or your DHCP client is running.
 
 *Example order*: +run_watch DHCP+
+
+*Example format*: +%title: %status+
+
+=== Path-exists
+
+Checks if the given path exists in the filesystem. You can use this to check if
+something is active, like for example a VPN tunnel managed by NetworkManager.
+
+*Example order*: +path_exists VPN+
 
 *Example format*: +%title: %status+
 
@@ -220,8 +257,9 @@ If you want the battery percentage to be shown without decimals, add
 +integer_battery_capacity = true+.
 
 If your battery is represented in a non-standard path in /sys, be sure to
-modify the "path" property accordingly. The first occurence of %d gets replaced
-with the battery number, but you can just hard-code a path as well.
+modify the "path" property accordingly, i.e. pointing to the uevent file on
+your system. The first occurence of %d gets replaced with the battery number,
+but you can just hard-code a path as well.
 
 It is possible to define a low_threshold that causes the battery text to be
 colored red. The low_threshold type can be of threshold_type "time" or
@@ -236,6 +274,8 @@ colored red. The low_threshold type can be of threshold_type "time" or
 
 *Example threshold_type*: +time+
 
+*Example path*: +/sys/class/power_supply/CMB1/uevent+
+
 === CPU-Temperature
 
 Gets the temperature of the given thermal zone. It is possible to
@@ -247,6 +287,8 @@ specified thermal zone is getting too hot. Defaults to 75 degrees C.
 *Example format*: +T: %degrees °C+
 
 *Example max_threshold*: +42+
+
+*Example path*: +/sys/devices/platform/coretemp.0/temp1_input+
 
 === CPU Usage
 
@@ -267,7 +309,7 @@ getting higher than the configured threshold. Defaults to 5.
 
 *Example format*: +%1min %5min %15min+
 
-*Example max_threshold*: 5
+*Example max_threshold*: +"0,1"+
 
 === Time
 
@@ -311,18 +353,21 @@ details on the format string.
 Outputs the volume of the specified mixer on the specified device. Works only
 on Linux because it uses ALSA.
 A simplified configuration can be used on FreeBSD and OpenBSD due to
-the lack of ALSA,  the +device+, +mixer+ and +mixder_idx+ options can be
+the lack of ALSA,  the +device+ and +mixer+ options can be
 ignored on these systems. On these systems the OSS API is used instead to
-query +/dev/mixer+ directly.
+query +/dev/mixer+ directly if +mixer_dix+ is -1, otherwise
++/dev/mixer++mixer_idx+.
 
 *Example order*: +volume master+
 
 *Example format*: +♪: %volume+
+*Example format_muted*: +♪: 0%%+
 
 *Example configuration*:
 -------------------------------------------------------------
 volume master {
 	format = "♪: %volume"
+	format_muted = "♪: muted (%volume)"
 	device = "default"
 	mixer = "Master"
 	mixer_idx = 0
