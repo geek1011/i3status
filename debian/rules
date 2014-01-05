@@ -7,32 +7,12 @@ DPKG_EXPORT_BUILDFLAGS = 1
 # for verbose builds
 export V:=1
 
-build: build-stamp
-build-arch: build-stamp
-build-indep: build-stamp
-build-stamp:
-	dh build
-	touch $@
-
-clean: 
-	dh clean
-
-install: build install-stamp
-install-stamp:
-	dh install
-	touch $@
-
-binary-arch: install
-	dh binary-arch
-
-binary-indep: install
-	dh binary-indep
-
-binary: binary-arch binary-indep
-
 override_dh_auto_build:
 	$(MAKE)
 
 override_dh_install:
 	$(MAKE) DESTDIR=$(CURDIR)/debian/i3status/ install
 	dh_install
+
+%:
+	dh $@
