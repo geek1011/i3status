@@ -14,6 +14,7 @@
 #include <sys/sysctl.h>
 #define TZ_ZEROC 2732
 #define TZ_KELVTOC(x) (((x) - TZ_ZEROC) / 10), abs(((x) - TZ_ZEROC) % 10)
+#define TZ_AVG(x) ((x) - TZ_ZEROC) / 10
 #endif
 
 #if defined(__OpenBSD__)
@@ -27,6 +28,15 @@
 #define MUKTOC(v) ((v - 273150000) / 1000000.0)
 #endif
 
+#if defined(__NetBSD__)
+#include <fcntl.h>
+#include <prop/proplib.h>
+#include <sys/envsys.h>
+
+#define MUKTOC(v) ((v - 273150000) / 1000000.0)
+#endif
+
+
 static char *thermal_zone;
 
 /*
@@ -35,15 +45,17 @@ static char *thermal_zone;
  *
  */
 void print_cpu_temperature_info(yajl_gen json_gen, char *buffer, int zone, const char *path, const char *format, int max_threshold) {
+        char *outwalk = buffer;
 #ifdef THERMAL_ZONE
         const char *walk;
-        char *outwalk = buffer;
         bool colorful_output = false;
 
-        if (path == NULL)
-                asprintf(&thermal_zone, THERMAL_ZONE, zone);
-        else
-                asprintf(&thermal_zone, path, zone);
+        if (thermal_zone == NULL) {
+                if (path == NULL)
+                        asprintf(&thermal_zone, THERMAL_ZONE, zone);
+                else
+                        asprintf(&thermal_zone, path, zone);
+        }
         path = thermal_zone;
 
         INSTANCE(path);
@@ -80,7 +92,16 @@ void print_cpu_temperature_info(yajl_gen json_gen, char *buffer, int zone, const
                         if (sysctlbyname(path, &sysctl_rslt, &sysctl_size, NULL, 0))
                                 goto error;
 
+                        if (TZ_AVG(sysctl_rslt) >= max_threshold) {
+                                START_COLOR("color_bad");
+                                colorful_output = true;
+                        }
                         outwalk += sprintf(outwalk, "%d.%d", TZ_KELVTOC(sysctl_rslt));
+                        if (colorful_output) {
+                                END_COLOR;
+                                colorful_output = false;
+                        }
+
 #elif defined(__OpenBSD__)
         struct sensordev sensordev;
         struct sensor sensor;
@@ -125,7 +146,87 @@ void print_cpu_temperature_info(yajl_gen json_gen, char *buffer, int zone, const
                         }
                 }
         }
+#elif defined(__NetBSD__)
+        int fd, rval;
+        bool err = false;
+        prop_dictionary_t dict;
+        prop_array_t array;
+        prop_object_iterator_t iter;
+        prop_object_iterator_t iter2;
+        prop_object_t obj, obj2, obj3;
+
+        fd = open("/dev/sysmon", O_RDONLY);
+        if (fd == -1)
+                goto error;
+
+        rval = prop_dictionary_recv_ioctl(fd, ENVSYS_GETDICTIONARY, &dict);
+        if (rval == -1) {
+            err = true;
+            goto error_netbsd1;
+        }
+
+        /* No drivers registered? */
+        if (prop_dictionary_count(dict) == 0) {
+            err = true;
+            goto error_netbsd2;
+        }
+
+        /* print sensors for all devices registered */
+        iter = prop_dictionary_iterator(dict);
+        if (iter == NULL) {
+            err = true;
+            goto error_netbsd2;
+        }
+
+        /* iterate over the dictionary returned by the kernel */
+        while ((obj = prop_object_iterator_next(iter)) != NULL) {
+                array = prop_dictionary_get_keysym(dict, obj);
+                if (prop_object_type(array) != PROP_TYPE_ARRAY) {
+                    err = true;
+                    goto error_netbsd3;
+                }
+                iter2 = prop_array_iterator(array);
+                if (!iter2) {
+                    err = true;
+                    goto error_netbsd3;
+                }
+
+                /* iterate over the array of dictionaries */
+                while ((obj2 = prop_object_iterator_next(iter2)) != NULL) {
+                        obj3 = prop_dictionary_get(obj2, "description");
+                        if (obj3 &&
+                            strcmp(path, prop_string_cstring_nocopy(obj3)) == 0)
+                        {
+                                obj3 = prop_dictionary_get(obj2, "cur-value");
+                                float temp = MUKTOC(prop_number_integer_value(obj3));
+                                if ((int)temp >= max_threshold) {
+                                        START_COLOR("color_bad");
+                                        colorful_output = true;
+                                }
+
+                                outwalk += sprintf(outwalk, "%.2f", temp);
+
+                                if (colorful_output) {
+                                        END_COLOR;
+                                        colorful_output = false;
+                                }
+                                break;
+                        }
+
+                }
+                prop_object_iterator_release(iter2);
+        }
+error_netbsd3:
+        prop_object_iterator_release(iter);
+error_netbsd2:
+	prop_object_release(dict);
+error_netbsd1:
+        close(fd);
+        if (err) goto error;
+
 #endif
+
+
                         walk += strlen("degrees");
                 }
         }
