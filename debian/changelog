@@ -1,3 +1,11 @@
+i3status (2.9-1) experimental; urgency=low
+
+  * New upstream release
+  * switch to machine-readable debian/copyright
+  * bump standards-version to 3.9.6 (no changes necessary)
+
+ -- Michael Stapelberg <stapelberg@debian.org>  Sun, 22 Mar 2015 18:59:38 +0100
+
 i3status (2.8-1) unstable; urgency=low
 
   * New upstream release
