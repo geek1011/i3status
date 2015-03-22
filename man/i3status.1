@@ -1,13 +1,13 @@
 '\" t
 .\"     Title: i3status
 .\"    Author: [see the "AUTHORS" section]
-.\" Generator: DocBook XSL Stylesheets v1.76.1 <http://docbook.sf.net/>
-.\"      Date: 01/05/2014
+.\" Generator: DocBook XSL Stylesheets v1.78.1 <http://docbook.sf.net/>
+.\"      Date: 03/21/2015
 .\"    Manual: i3 Manual
 .\"    Source: i3status v2.8
 .\"  Language: English
 .\"
-.TH "I3STATUS" "1" "01/05/2014" "i3status v2\&.8" "i3 Manual"
+.TH "I3STATUS" "1" "03/21/2015" "i3status v2\&.8" "i3 Manual"
 .\" -----------------------------------------------------------------
 .\" * Define some portability stuff
 .\" -----------------------------------------------------------------
@@ -128,6 +128,9 @@ ethernet eth0 {
 battery 0 {
         format = "%status %percentage %remaining %emptytime"
         format_down = "No battery"
+        status_chr = "⚇ CHR""
+        status_bat = "⚡ BAT"
+        status_full = "☻ FULL"
         path = "/sys/class/power_supply/BAT%d/uevent"
         low_threshold = 10
 }
@@ -188,7 +191,7 @@ color_good = "#00FF00"
 .RE
 .\}
 .sp
-Likewise, you can use the color_separator directive to specify the color that will be used to paint the separator bar\&. The separator is always output in color, even when colors are disabled by the colors directive\&.
+Likewise, you can use the color_separator directive to specify the color that will be used to paint the separator bar\&. The separator is always output in color, even when colors are disabled by the colors directive\&. This option has no effect when output_format is set to i3bar or none\&.
 .sp
 The interval directive specifies the time in seconds for which i3status will sleep before printing the next status line\&.
 .sp
@@ -216,17 +219,44 @@ Use ANSI Escape sequences to produce a terminal\-output as close as possible to 
 .PP
 none
 .RS 4
-Does not use any color codes\&. Separates values by the pipe symbol\&. This should be used with i3bar and can be used for custom scripts\&.
+Does not use any color codes\&. Separates values by the pipe symbol by default\&. This should be used with i3bar and can be used for custom scripts\&.
 .RE
 .sp
 It\(cqs also possible to use the color_good, color_degraded, color_bad directives to define specific colors per module\&. If one of these directives is defined in a module section its value will override the value defined in the general section just for this module\&.
+.sp
+If you don\(cqt fancy the vertical separators between modules i3status/i3bar uses by default, you can employ the separator directive to configure how modules are separated\&. You can either disable the default separator altogether setting it to the empty string\&. You might then define separation as part of a module\(cqs format string\&. This is your only option when using the i3bar output format as the separator is drawn by i3bar directly otherwise\&. For the other output formats, the provided non\-empty string will be automatically enclosed with the necessary coloring bits if color support is enabled\&.
+.sp
+\fBExample configuration\fR:
+.sp
+.if n \{\
+.RS 4
+.\}
+.nf
+general {
+    output_format = "xmobar"
+    separator = "  "
+}
+
+order += "load"
+order += "disk /"
+
+load {
+    format = "[ load: %1min, %5min, %15min ]"
+}
+disk "/" {
+    format = "%avail"
+}
+.fi
+.if n \{\
+.RE
+.\}
 .SS "IPv6"
 .sp
 This module gets the IPv6 address used for outgoing connections (that is, the best available public IPv6 address on your computer)\&.
 .sp
 \fBExample format_up\fR: %ip
 .sp
-\fBExample format_down\fR no IPv6
+\fBExample format_down\fR: no IPv6
 .SS "Disk"
 .sp
 Gets used, free, available and total amount of bytes on the given mounted filesystem\&.
@@ -250,6 +280,10 @@ custom
 The custom prefixes (K, M, G, T) represent multiples of powers of 1024\&.
 .RE
 .sp
+It is possible to define a low_threshold that causes the disk text to be displayed using color_bad\&. The low_threshold type can be of threshold_type "bytes_free", "bytes_avail", "percentage_free", or "percentage_avail", where the former two can be prepended by a generic prefix (k, m, g, t) having prefix_type\&. So, if you configure low_threshold to 2, threshold_type to "gbytes_avail", and prefix_type to "binary", and the remaining available disk space is below 2 GiB, it will be colored bad\&. If not specified, threshold_type is assumed to be "percentage_avail" and low_threshold to be set to 0, which implies no coloring at all\&.
+.sp
+You can define a different format with the option "format_not_mounted" which is used if the path is not a mount point\&. So you can just empty the output for the given path with adding \(Fcformat_not_mounted=""\(Fo to the config section\&.
+.sp
 \fBExample order\fR: disk /mnt/usbstick
 .sp
 \fBExample format\fR: %free (%avail)/ %total
@@ -257,6 +291,10 @@ The custom prefixes (K, M, G, T) represent multiples of powers of 1024\&.
 \fBExample format\fR: %percentage_used used, %percentage_free free, %percentage_avail avail
 .sp
 \fBExample prefix_type\fR: custom
+.sp
+\fBExample low_threshold\fR: 5
+.sp
+\fBExample threshold_type\fR: percentage_free
 .SS "Run\-watch"
 .sp
 Expands the given path to a pidfile and checks if the process ID found inside is valid (that is, if the process is running)\&. You can use this to check if a specific application, such as a VPN client or your DHCP client is running\&.
@@ -273,21 +311,25 @@ Checks if the given path exists in the filesystem\&. You can use this to check i
 \fBExample format\fR: %title: %status
 .SS "Wireless"
 .sp
-Gets the link quality and ESSID of the given wireless network interface\&. You can specify different format strings for the network being connected or not connected\&.
+Gets the link quality, frequency and ESSID of the given wireless network interface\&. You can specify different format strings for the network being connected or not connected\&.
+.sp
+The special interface name _first_ will be replaced by the first wireless network interface found on the system (excluding devices starting with "lo")\&.
 .sp
 \fBExample order\fR: wireless wlan0
 .sp
-\fBExample format\fR: W: (%quality at %essid, %bitrate) %ip
+\fBExample format\fR: W: (%quality at %essid, %bitrate / %frequency) %ip
 .SS "Ethernet"
 .sp
 Gets the IP address and (if possible) the link speed of the given ethernet interface\&. Getting the link speed requires the cap_net_admin capability\&. Set it using setcap cap_net_admin=ep $(which i3status)\&.
+.sp
+The special interface name _first_ will be replaced by the first non\-wireless network interface found on the system (excluding devices starting with "lo")\&.
 .sp
 \fBExample order\fR: ethernet eth0
 .sp
 \fBExample format\fR: E: %ip (%speed)
 .SS "Battery"
 .sp
-Gets the status (charging, discharging, running), percentage, remaining time and power consumption (in Watts) of the given battery and when it\(cqs estimated to be empty\&. If you want to use the last full capacity instead of the design capacity (when using the design capacity, it may happen that your battery is at 23% when fully charged because it\(cqs old\&. In general, I want to see it this way, because it tells me how worn off my battery is\&.), just specify last_full_capacity = true\&.
+Gets the status (charging, discharging, running), percentage, remaining time and power consumption (in Watts) of the given battery and when it\(cqs estimated to be empty\&. If you want to use the last full capacity instead of the design capacity (when using the design capacity, it may happen that your battery is at 23% when fully charged because it\(cqs old\&. In general, I want to see it this way, because it tells me how worn off my battery is\&.), just specify last_full_capacity = true\&. You can hide seconds in the remaining time and empty time estimations by setting hide_seconds = true\&.
 .sp
 If you want the battery percentage to be shown without decimals, add integer_battery_capacity = true\&.
 .sp
@@ -295,9 +337,19 @@ If your battery is represented in a non\-standard path in /sys, be sure to modif
 .sp
 It is possible to define a low_threshold that causes the battery text to be colored red\&. The low_threshold type can be of threshold_type "time" or "percentage"\&. So, if you configure low_threshold to 10 and threshold_type to "time", and your battery lasts another 9 minutes, it will be colored red\&.
 .sp
+Optionally custom strings including any UTF\-8 symbols can be used for different battery states\&. This makes it possible to display individual symbols for each state (charging, discharging, full) Of course it will also work with special iconic fonts, such as FontAwesome\&. If any of this special status strings is omitted, the default (CHR, BAT, FULL) is used\&.
+.sp
 \fBExample order\fR: battery 0
 .sp
 \fBExample format\fR: %status %remaining (%emptytime %consumption)
+.sp
+\fBExample format_down\fR: No battery
+.sp
+\fBExample status_chr\fR: ⚇ CHR
+.sp
+\fBExample status_bat\fR: ⚡ BAT
+.sp
+\fBExample status_full\fR: ☻ FULL
 .sp
 \fBExample low_threshold\fR: 30
 .sp
@@ -356,7 +408,33 @@ Outputs the current discordian date in user\-specified format\&. See ddate(1) fo
 \fBExample format\fR: %{%a, %b %d%}, %Y%N \- %H
 .SS "Volume"
 .sp
-Outputs the volume of the specified mixer on the specified device\&. Works only on Linux because it uses ALSA\&. A simplified configuration can be used on FreeBSD and OpenBSD due to the lack of ALSA, the device and mixer options can be ignored on these systems\&. On these systems the OSS API is used instead to query /dev/mixer directly if mixer_dix is \-1, otherwise /dev/mixer+mixer_idx+\&.
+Outputs the volume of the specified mixer on the specified device\&. If compiled with USE_PULSEAUDIO, may work on any system with PulseAudio\&. Otherwise only ALSA is available and therefore will only work on Linux\&. In this case a simplified configuration can be used on FreeBSD and OpenBSD due to the lack of ALSA, the device and mixer options can be ignored on these systems\&. On these systems the OSS API is used instead to query /dev/mixer directly if mixer_idx is \-1, otherwise /dev/mixer+mixer_idx+\&.
+.sp
+To get PulseAudio volume information, one must use the following format in the device line:
+.sp
+.if n \{\
+.RS 4
+.\}
+.nf
+device = "pulse"
+.fi
+.if n \{\
+.RE
+.\}
+.sp
+or
+.sp
+.if n \{\
+.RS 4
+.\}
+.nf
+device = "pulse:N"
+.fi
+.if n \{\
+.RE
+.\}
+.sp
+where N is the index of the PulseAudio sink\&. If no sink is specified the default is used\&. If the device string is missing or is set to "default", PulseAudio will be tried if detected and will fallback to ALSA (Linux) or OSS (FreeBSD/OpenBSD)\&.
 .sp
 \fBExample order\fR: volume master
 .sp
@@ -374,6 +452,56 @@ volume master {
         device = "default"
         mixer = "Master"
         mixer_idx = 0
+}
+.fi
+.if n \{\
+.RE
+.\}
+.sp
+\fBExample configuration (PulseAudio)\fR:
+.sp
+.if n \{\
+.RS 4
+.\}
+.nf
+volume master {
+        format = "♪: %volume"
+        format_muted = "♪: muted (%volume)"
+        device = "pulse:1"
+}
+.fi
+.if n \{\
+.RE
+.\}
+.SH "UNIVERSAL MODULE OPTIONS"
+.sp
+When using the i3bar output format, there are a few additional options that can be used with all modules to customize their appearance:
+.PP
+align
+.RS 4
+The alignment policy to use when the minimum width (see below) is not reached\&. Either
+center
+(default),
+right
+or
+left\&.
+.RE
+.PP
+min_width
+.RS 4
+The minimum width (in pixels) the module should occupy\&. If the module takes less space than the specified size, the block will be padded to the left and/or the right side, according to the defined alignment policy\&. This is useful when you want to prevent the whole status line from shifting when values take more or less space between each iteration\&. The option can also be a string\&. In this case, the width of the given text determines the minimum width of the block\&. This is useful when you want to set a sensible minimum width regardless of which font you are using, and at what particular size\&. Please note that a number enclosed with quotes will still be treated as a number\&.
+.RE
+.sp
+\fBExample configuration\fR:
+.sp
+.if n \{\
+.RS 4
+.\}
+.nf
+disk "/" {
+    format = "%avail"
+    align = "left"
+    min_width = 100
 }
 .fi
 .if n \{\
