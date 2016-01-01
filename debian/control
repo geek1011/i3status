@@ -2,7 +2,18 @@ Source: i3status
 Section: utils
 Priority: extra
 Maintainer: Michael Stapelberg <stapelberg@debian.org>
-Build-Depends: debhelper (>= 9), libiw-dev [linux-any], libconfuse-dev, asciidoc, xmlto, libcap2-bin [linux-any], libasound2-dev [linux-any], libbsd-dev [kfreebsd-any], libyajl-dev
+Build-Depends: debhelper (>= 9),
+               libiw-dev [linux-any],
+               libconfuse-dev,
+               asciidoc,
+               xmlto,
+               libcap2-bin [linux-any],
+               libasound2-dev [linux-any],
+               libbsd-dev [kfreebsd-any],
+               libyajl-dev,
+               libnl-genl-3-dev [linux-any],
+               libpulse-dev,
+               pkg-config
 Standards-Version: 3.9.6
 Homepage: http://i3wm.org/i3status
 Vcs-Git: git://anonscm.debian.org/users/stapelberg/i3status.git
