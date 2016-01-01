@@ -2,12 +2,12 @@
 .\"     Title: i3status
 .\"    Author: [see the "AUTHORS" section]
 .\" Generator: DocBook XSL Stylesheets v1.78.1 <http://docbook.sf.net/>
-.\"      Date: 03/21/2015
+.\"      Date: 11/16/2015
 .\"    Manual: i3 Manual
-.\"    Source: i3status v2.8
+.\"    Source: i3status v2.9
 .\"  Language: English
 .\"
-.TH "I3STATUS" "1" "03/21/2015" "i3status v2\&.8" "i3 Manual"
+.TH "I3STATUS" "1" "11/16/2015" "i3status v2\&.9" "i3 Manual"
 .\" -----------------------------------------------------------------
 .\" * Define some portability stuff
 .\" -----------------------------------------------------------------
@@ -28,7 +28,7 @@
 .\" * MAIN CONTENT STARTS HERE *
 .\" -----------------------------------------------------------------
 .SH "NAME"
-i3status \- Generates a status line for i3bar, dzen2 or xmobar
+i3status \- Generates a status line for i3bar, dzen2, xmobar or lemonbar
 .SH "SYNOPSIS"
 .sp
 i3status [\-c configfile] [\-h] [\-v]
@@ -84,7 +84,7 @@ Specifies an alternate configuration file path\&. By default, i3status looks for
 .RE
 .SH "DESCRIPTION"
 .sp
-i3status is a small program (about 1500 SLOC) for generating a status bar for i3bar, dzen2, xmobar or similar programs\&. It is designed to be very efficient by issuing a very small number of system calls, as one generally wants to update such a status line every second\&. This ensures that even under high load, your status bar is updated correctly\&. Also, it saves a bit of energy by not hogging your CPU as much as spawning the corresponding amount of shell commands would\&.
+i3status is a small program (about 1500 SLOC) for generating a status bar for i3bar, dzen2, xmobar, lemonbar or similar programs\&. It is designed to be very efficient by issuing a very small number of system calls, as one generally wants to update such a status line every second\&. This ensures that even under high load, your status bar is updated correctly\&. Also, it saves a bit of energy by not hogging your CPU as much as spawning the corresponding amount of shell commands would\&.
 .SH "CONFIGURATION"
 .sp
 The basic idea of i3status is that you can specify which "modules" should be used (the order directive)\&. You can then configure each module with its own section\&. For every module, you can specify the output format\&. See below for a complete reference\&.
@@ -128,7 +128,7 @@ ethernet eth0 {
 battery 0 {
         format = "%status %percentage %remaining %emptytime"
         format_down = "No battery"
-        status_chr = "⚇ CHR""
+        status_chr = "⚇ CHR"
         status_bat = "⚡ BAT"
         status_full = "☻ FULL"
         path = "/sys/class/power_supply/BAT%d/uevent"
@@ -212,6 +212,11 @@ xmobar
 xmobar is a minimalistic, text based, status bar\&. It was designed to work with the xmonad Window Manager\&.
 .RE
 .PP
+lemonbar
+.RS 4
+lemonbar is a lightweight bar based entirely on XCB\&. It has full UTF\-8 support and is EWMH compliant\&.
+.RE
+.PP
 term
 .RS 4
 Use ANSI Escape sequences to produce a terminal\-output as close as possible to the graphical outputs\&. This makes debugging your config file a little bit easier because the terminal\-output of i3status becomes much more readable, but should only used for such quick glances, because it will only support very basic output\-features (for example you only get 3 bits of color depth)\&.
@@ -282,7 +287,7 @@ The custom prefixes (K, M, G, T) represent multiples of powers of 1024\&.
 .sp
 It is possible to define a low_threshold that causes the disk text to be displayed using color_bad\&. The low_threshold type can be of threshold_type "bytes_free", "bytes_avail", "percentage_free", or "percentage_avail", where the former two can be prepended by a generic prefix (k, m, g, t) having prefix_type\&. So, if you configure low_threshold to 2, threshold_type to "gbytes_avail", and prefix_type to "binary", and the remaining available disk space is below 2 GiB, it will be colored bad\&. If not specified, threshold_type is assumed to be "percentage_avail" and low_threshold to be set to 0, which implies no coloring at all\&.
 .sp
-You can define a different format with the option "format_not_mounted" which is used if the path is not a mount point\&. So you can just empty the output for the given path with adding \(Fcformat_not_mounted=""\(Fo to the config section\&.
+You can define a different format with the option "format_not_mounted" which is used if the path does not exist or is not a mount point\&. So you can just empty the output for the given path with adding format_not_mounted="" to the config section\&.
 .sp
 \fBExample order\fR: disk /mnt/usbstick
 .sp
@@ -297,14 +302,14 @@ You can define a different format with the option "format_not_mounted" which is 
 \fBExample threshold_type\fR: percentage_free
 .SS "Run\-watch"
 .sp
-Expands the given path to a pidfile and checks if the process ID found inside is valid (that is, if the process is running)\&. You can use this to check if a specific application, such as a VPN client or your DHCP client is running\&.
+Expands the given path to a pidfile and checks if the process ID found inside is valid (that is, if the process is running)\&. You can use this to check if a specific application, such as a VPN client or your DHCP client is running\&. There also is an option "format_down"\&. You can hide the output with format_down=""\&.
 .sp
 \fBExample order\fR: run_watch DHCP
 .sp
 \fBExample format\fR: %title: %status
 .SS "Path\-exists"
 .sp
-Checks if the given path exists in the filesystem\&. You can use this to check if something is active, like for example a VPN tunnel managed by NetworkManager\&.
+Checks if the given path exists in the filesystem\&. You can use this to check if something is active, like for example a VPN tunnel managed by NetworkManager\&. There also is an option "format_down"\&. You can hide the output with format_down=""\&.
 .sp
 \fBExample order\fR: path_exists VPN
 .sp
@@ -408,7 +413,7 @@ Outputs the current discordian date in user\-specified format\&. See ddate(1) fo
 \fBExample format\fR: %{%a, %b %d%}, %Y%N \- %H
 .SS "Volume"
 .sp
-Outputs the volume of the specified mixer on the specified device\&. If compiled with USE_PULSEAUDIO, may work on any system with PulseAudio\&. Otherwise only ALSA is available and therefore will only work on Linux\&. In this case a simplified configuration can be used on FreeBSD and OpenBSD due to the lack of ALSA, the device and mixer options can be ignored on these systems\&. On these systems the OSS API is used instead to query /dev/mixer directly if mixer_idx is \-1, otherwise /dev/mixer+mixer_idx+\&.
+Outputs the volume of the specified mixer on the specified device\&. PulseAudio and ALSA (Linux only) are supported\&. If PulseAudio is absent, a simplified configuration can be used on FreeBSD and OpenBSD due to the lack of ALSA, the device and mixer options can be ignored on these systems\&. On these systems the OSS API is used instead to query /dev/mixer directly if mixer_idx is \-1, otherwise /dev/mixer+mixer_idx+\&.
 .sp
 To get PulseAudio volume information, one must use the following format in the device line:
 .sp
@@ -438,7 +443,9 @@ where N is the index of the PulseAudio sink\&. If no sink is specified the defau
 .sp
 \fBExample order\fR: volume master
 .sp
-\fBExample format\fR: ♪: %volume \fBExample format_muted\fR: ♪: 0%%
+\fBExample format\fR: ♪: %volume
+.sp
+\fBExample format_muted\fR: ♪: 0%%
 .sp
 \fBExample configuration\fR:
 .sp
