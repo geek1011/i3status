@@ -1,3 +1,9 @@
+i3status (2.10-2) unstable; urgency=medium
+
+  * Fix FTBFS on kfreebsd/hurd (Patch by Axel Beckert) (Closes: #826833)
+
+ -- Michael Stapelberg <stapelberg@debian.org>  Mon, 22 Aug 2016 08:53:08 +0200
+
 i3status (2.10-1) unstable; urgency=medium
 
   * New upstream release
