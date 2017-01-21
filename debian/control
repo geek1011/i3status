@@ -15,9 +15,9 @@ Build-Depends: debhelper (>= 9),
                libpulse-dev,
                pkg-config
 Standards-Version: 3.9.6
-Homepage: http://i3wm.org/i3status
-Vcs-Git: git://anonscm.debian.org/users/stapelberg/i3status.git
-Vcs-Browser: http://anonscm.debian.org/gitweb/?p=users/stapelberg/i3status.git
+Homepage: https://i3wm.org/i3status
+Vcs-Git: https://anonscm.debian.org/git/users/stapelberg/i3status.git
+Vcs-Browser: https://anonscm.debian.org/cgit/users/stapelberg/i3status.git/
 
 Package: i3status
 Architecture: any
