@@ -4,6 +4,8 @@
 # for verbose builds
 export V:=1
 
+export DEB_BUILD_MAINT_OPTIONS = hardening=+all
+
 override_dh_auto_build:
 	$(MAKE)
 
