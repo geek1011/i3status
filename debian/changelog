@@ -1,3 +1,16 @@
+i3status (2.11-1) unstable; urgency=medium
+
+  * New upstream version 2.11
+  * drop kfreebsd-ftbfs.patch (merged upstream)
+  * drop reproducible-build.patch (merged upstream)
+  * use secure URLs
+  * postinst: use command -v to check for setcap presence
+  * copyright: only include license once
+  * enable all hardening
+  * bump standards-version (no changes necessary)
+
+ -- Michael Stapelberg <stapelberg@debian.org>  Sat, 21 Jan 2017 15:42:57 +0100
+
 i3status (2.10-3) unstable; urgency=medium
 
   * Add debian/patches/reproducible-build.patch (by Reiner Herrmann)
