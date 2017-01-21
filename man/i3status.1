@@ -1,13 +1,13 @@
 '\" t
 .\"     Title: i3status
 .\"    Author: [see the "AUTHORS" section]
-.\" Generator: DocBook XSL Stylesheets v1.78.1 <http://docbook.sf.net/>
-.\"      Date: 11/16/2015
+.\" Generator: DocBook XSL Stylesheets v1.79.1 <http://docbook.sf.net/>
+.\"      Date: 01/21/2017
 .\"    Manual: i3 Manual
-.\"    Source: i3status v2.9
+.\"    Source: i3status v2.11
 .\"  Language: English
 .\"
-.TH "I3STATUS" "1" "11/16/2015" "i3status v2\&.9" "i3 Manual"
+.TH "I3STATUS" "1" "01/21/2017" "i3status v2\&.11" "i3 Manual"
 .\" -----------------------------------------------------------------
 .\" * Define some portability stuff
 .\" -----------------------------------------------------------------
@@ -46,7 +46,7 @@ Specifies an alternate configuration file path\&. By default, i3status looks for
 .sp -1
 .IP "  1." 4.2
 .\}
-~/\&.i3status\&.conf
+~/\&.config/i3status/config (or $XDG_CONFIG_HOME/i3status/config if set)
 .RE
 .sp
 .RS 4
@@ -57,7 +57,7 @@ Specifies an alternate configuration file path\&. By default, i3status looks for
 .sp -1
 .IP "  2." 4.2
 .\}
-~/\&.config/i3status/config (or $XDG_CONFIG_HOME/i3status/config if set)
+/etc/xdg/i3status/config (or $XDG_CONFIG_DIRS/i3status/config if set)
 .RE
 .sp
 .RS 4
@@ -68,7 +68,7 @@ Specifies an alternate configuration file path\&. By default, i3status looks for
 .sp -1
 .IP "  3." 4.2
 .\}
-/etc/i3status\&.conf
+~/\&.i3status\&.conf
 .RE
 .sp
 .RS 4
@@ -79,7 +79,7 @@ Specifies an alternate configuration file path\&. By default, i3status looks for
 .sp -1
 .IP "  4." 4.2
 .\}
-/etc/xdg/i3status/config (or $XDG_CONFIG_DIRS/i3status/config if set)
+/etc/i3status\&.conf
 .RE
 .RE
 .SH "DESCRIPTION"
@@ -128,8 +128,9 @@ ethernet eth0 {
 battery 0 {
         format = "%status %percentage %remaining %emptytime"
         format_down = "No battery"
-        status_chr = "⚇ CHR"
-        status_bat = "⚡ BAT"
+        status_chr = "⚡ CHR"
+        status_bat = "🔋 BAT"
+        status_unk = "? UNK"
         status_full = "☻ FULL"
         path = "/sys/class/power_supply/BAT%d/uevent"
         low_threshold = 10
@@ -231,6 +232,8 @@ It\(cqs also possible to use the color_good, color_degraded, color_bad directive
 .sp
 If you don\(cqt fancy the vertical separators between modules i3status/i3bar uses by default, you can employ the separator directive to configure how modules are separated\&. You can either disable the default separator altogether setting it to the empty string\&. You might then define separation as part of a module\(cqs format string\&. This is your only option when using the i3bar output format as the separator is drawn by i3bar directly otherwise\&. For the other output formats, the provided non\-empty string will be automatically enclosed with the necessary coloring bits if color support is enabled\&.
 .sp
+i3bar supports Pango markup, allowing your format strings to specify font color, size, etc\&. by setting the markup directive to "pango"\&. Note that the ampersand ("&"), less\-than ("<"), greater\-than (">"), single\-quote ("\*(Aq"), and double\-quote (""") characters need to be replaced with "&amp;", "&lt;", "&gt;", "&apos;", and "&quot;" respectively\&. This is done automatically for generated content (e\&.g\&. wireless ESSID, time)\&.
+.sp
 \fBExample configuration\fR:
 .sp
 .if n \{\
@@ -285,9 +288,9 @@ custom
 The custom prefixes (K, M, G, T) represent multiples of powers of 1024\&.
 .RE
 .sp
-It is possible to define a low_threshold that causes the disk text to be displayed using color_bad\&. The low_threshold type can be of threshold_type "bytes_free", "bytes_avail", "percentage_free", or "percentage_avail", where the former two can be prepended by a generic prefix (k, m, g, t) having prefix_type\&. So, if you configure low_threshold to 2, threshold_type to "gbytes_avail", and prefix_type to "binary", and the remaining available disk space is below 2 GiB, it will be colored bad\&. If not specified, threshold_type is assumed to be "percentage_avail" and low_threshold to be set to 0, which implies no coloring at all\&.
+It is possible to define a low_threshold that causes the disk text to be displayed using color_bad\&. The low_threshold type can be of threshold_type "bytes_free", "bytes_avail", "percentage_free", or "percentage_avail", where the former two can be prepended by a generic prefix (k, m, g, t) having prefix_type\&. So, if you configure low_threshold to 2, threshold_type to "gbytes_avail", and prefix_type to "binary", and the remaining available disk space is below 2 GiB, it will be colored bad\&. If not specified, threshold_type is assumed to be "percentage_avail" and low_threshold to be set to 0, which implies no coloring at all\&. You can customize the output format when below low_threshold with format_below_threshold\&.
 .sp
-You can define a different format with the option "format_not_mounted" which is used if the path does not exist or is not a mount point\&. So you can just empty the output for the given path with adding format_not_mounted="" to the config section\&.
+You can define a different format with the option "format_not_mounted" which is used if the path does not exist or is not a mount point\&. Defaults to ""\&.
 .sp
 \fBExample order\fR: disk /mnt/usbstick
 .sp
@@ -298,6 +301,8 @@ You can define a different format with the option "format_not_mounted" which is 
 \fBExample prefix_type\fR: custom
 .sp
 \fBExample low_threshold\fR: 5
+.sp
+\fBExample format_below_threshold\fR: Warning: %percentage_avail
 .sp
 \fBExample threshold_type\fR: percentage_free
 .SS "Run\-watch"
@@ -334,25 +339,31 @@ The special interface name _first_ will be replaced by the first non\-wireless n
 \fBExample format\fR: E: %ip (%speed)
 .SS "Battery"
 .sp
-Gets the status (charging, discharging, running), percentage, remaining time and power consumption (in Watts) of the given battery and when it\(cqs estimated to be empty\&. If you want to use the last full capacity instead of the design capacity (when using the design capacity, it may happen that your battery is at 23% when fully charged because it\(cqs old\&. In general, I want to see it this way, because it tells me how worn off my battery is\&.), just specify last_full_capacity = true\&. You can hide seconds in the remaining time and empty time estimations by setting hide_seconds = true\&.
+Gets the status (charging, discharging, unknown, full), percentage, remaining time and power consumption (in Watts) of the given battery and when it\(cqs estimated to be empty\&. If you want to use the last full capacity instead of the design capacity (when using the design capacity, it may happen that your battery is at 23% when fully charged because it\(cqs old\&. In general, I want to see it this way, because it tells me how worn off my battery is\&.), just specify last_full_capacity = true\&. You can hide seconds in the remaining time and empty time estimations by setting hide_seconds = true\&.
 .sp
 If you want the battery percentage to be shown without decimals, add integer_battery_capacity = true\&.
 .sp
-If your battery is represented in a non\-standard path in /sys, be sure to modify the "path" property accordingly, i\&.e\&. pointing to the uevent file on your system\&. The first occurence of %d gets replaced with the battery number, but you can just hard\-code a path as well\&.
+If your battery is represented in a non\-standard path in /sys, be sure to modify the "path" property accordingly, i\&.e\&. pointing to the uevent file on your system\&. The first occurrence of %d gets replaced with the battery number, but you can just hard\-code a path as well\&.
 .sp
 It is possible to define a low_threshold that causes the battery text to be colored red\&. The low_threshold type can be of threshold_type "time" or "percentage"\&. So, if you configure low_threshold to 10 and threshold_type to "time", and your battery lasts another 9 minutes, it will be colored red\&.
 .sp
-Optionally custom strings including any UTF\-8 symbols can be used for different battery states\&. This makes it possible to display individual symbols for each state (charging, discharging, full) Of course it will also work with special iconic fonts, such as FontAwesome\&. If any of this special status strings is omitted, the default (CHR, BAT, FULL) is used\&.
+To show an aggregate of all batteries in the system, use "all" as the number\&. In this case (for Linux), the /sys path must contain the "%d" sequence\&. Otherwise, the number indicates the battery index as reported in /sys\&.
 .sp
-\fBExample order\fR: battery 0
+Optionally custom strings including any UTF\-8 symbols can be used for different battery states\&. This makes it possible to display individual symbols for each state (charging, discharging, unknown, full) Of course it will also work with special iconic fonts, such as FontAwesome\&. If any of these special status strings are omitted, the default (CHR, BAT, UNK, FULL) is used\&.
+.sp
+\fBExample order (for the first battery)\fR: battery 0
+.sp
+\fBExample order (aggregate of all batteries)\fR: battery all
 .sp
 \fBExample format\fR: %status %remaining (%emptytime %consumption)
 .sp
 \fBExample format_down\fR: No battery
 .sp
-\fBExample status_chr\fR: ⚇ CHR
+\fBExample status_chr\fR: ⚡ CHR
 .sp
-\fBExample status_bat\fR: ⚡ BAT
+\fBExample status_bat\fR: 🔋 BAT
+.sp
+\fBExample status_unk\fR: ? UNK
 .sp
 \fBExample status_full\fR: ☻ FULL
 .sp
@@ -360,10 +371,12 @@ Optionally custom strings including any UTF\-8 symbols can be used for different
 .sp
 \fBExample threshold_type\fR: time
 .sp
-\fBExample path\fR: /sys/class/power_supply/CMB1/uevent
+\fBExample path (%d replaced by title number)\fR: /sys/class/power_supply/CMB%d/uevent
+.sp
+\fBExample path (ignoring the number)\fR: /sys/class/power_supply/CMB1/uevent
 .SS "CPU\-Temperature"
 .sp
-Gets the temperature of the given thermal zone\&. It is possible to define a max_threshold that will color the temperature red in case the specified thermal zone is getting too hot\&. Defaults to 75 degrees C\&.
+Gets the temperature of the given thermal zone\&. It is possible to define a max_threshold that will color the temperature red in case the specified thermal zone is getting too hot\&. Defaults to 75 degrees C\&. The output format when above max_threshold can be customized with format_above_threshold\&.
 .sp
 \fBExample order\fR: cpu_temperature 0
 .sp
@@ -371,23 +384,39 @@ Gets the temperature of the given thermal zone\&. It is possible to define a max
 .sp
 \fBExample max_threshold\fR: 42
 .sp
+\fBExample format_above_threshold\fR: Warning T above threshold: %degrees \(deC
+.sp
 \fBExample path\fR: /sys/devices/platform/coretemp\&.0/temp1_input
 .SS "CPU Usage"
 .sp
 Gets the percentual CPU usage from /proc/stat (Linux) or sysctl(3) (FreeBSD/OpenBSD)\&.
 .sp
+It is possible to define a max_threshold that will color the load value red in case the CPU average over the last interval is getting higher than the configured threshold\&. Defaults to 95\&. The output format when above max_threshold can be customized with format_above_threshold\&.
+.sp
+It is possible to define a degraded_threshold that will color the load value yellow in case the CPU average over the last interval is getting higher than the configured threshold\&. Defaults to 90\&. The output format when above degraded threshold can be customized with format_above_degraded_threshold\&.
+.sp
 \fBExample order\fR: cpu_usage
 .sp
 \fBExample format\fR: %usage
+.sp
+\fBExample max_threshold\fR: 75
+.sp
+\fBExample format_above_threshold\fR: Warning above threshold: %usage
+.sp
+\fBExample degraded_threshold\fR: 25
+.sp
+\fBExample format_above_degraded_threshold\fR: Warning above degraded threshold: %usage
 .SS "Load"
 .sp
-Gets the system load (number of processes waiting for CPU time in the last 1, 5 and 15 minutes)\&. It is possible to define a max_threshold that will color the load value red in case the load average of the last minute is getting higher than the configured threshold\&. Defaults to 5\&.
+Gets the system load (number of processes waiting for CPU time in the last 1, 5 and 15 minutes)\&. It is possible to define a max_threshold that will color the load value red in case the load average of the last minute is getting higher than the configured threshold\&. Defaults to 5\&. The output format when above max_threshold can be customized with format_above_threshold\&.
 .sp
 \fBExample order\fR: load
 .sp
 \fBExample format\fR: %1min %5min %15min
 .sp
 \fBExample max_threshold\fR: "0,1"
+.sp
+\fBExample format_above_threshold\fR: Warning: %1min %5min %15min
 .SS "Time"
 .sp
 Outputs the current time in the local timezone\&. To use a different timezone, you can set the TZ environment variable, or use the tztime module\&. See strftime(3) for details on the format string\&.
@@ -397,13 +426,33 @@ Outputs the current time in the local timezone\&. To use a different timezone, y
 \fBExample format\fR: %Y\-%m\-%d %H:%M:%S
 .SS "TzTime"
 .sp
-Outputs the current time in the given timezone\&. If no timezone is given, local time will be used\&. See strftime(3) for details on the format string\&. The system\(cqs timezone database is usually installed in /usr/share/zoneinfo\&. Files below that path make for valid timezone strings, e\&.g\&. for /usr/share/zoneinfo/Europe/Berlin you can set timezone to Europe/Berlin in the tztime module\&.
+Outputs the current time in the given timezone\&. If no timezone is given, local time will be used\&. See strftime(3) for details on the format string\&. The system\(cqs timezone database is usually installed in /usr/share/zoneinfo\&. Files below that path make for valid timezone strings, e\&.g\&. for /usr/share/zoneinfo/Europe/Berlin you can set timezone to Europe/Berlin in the tztime module\&. To override the locale settings of your environment, set the locale option\&.
 .sp
 \fBExample order\fR: tztime berlin
 .sp
 \fBExample format\fR: %Y\-%m\-%d %H:%M:%S %Z
 .sp
 \fBExample timezone\fR: Europe/Berlin
+.sp
+\fBExample locale\fR: de_DE\&.UTF\-8
+.sp
+If you would like to use markup in this section, there is a separate format_time option that is automatically escaped\&. Its output then replaces %time in the format string\&.
+.sp
+\fBExample configuration (markup)\fR:
+.sp
+.if n \{\
+.RS 4
+.\}
+.nf
+tztime berlin {
+        format = "<span foreground=\*(Aq#ffffff\*(Aq>time:</span> %time"
+        format_time = "%H:%M %Z"
+        timezone = "Europe/Berlin"
+}
+.fi
+.if n \{\
+.RE
+.\}
 .SS "DDate"
 .sp
 Outputs the current discordian date in user\-specified format\&. See ddate(1) for details on the format string\&. \fBNote\fR: Neither \fB%\&.\fR nor \fB%X\fR are implemented yet\&.
@@ -439,7 +488,20 @@ device = "pulse:N"
 .RE
 .\}
 .sp
-where N is the index of the PulseAudio sink\&. If no sink is specified the default is used\&. If the device string is missing or is set to "default", PulseAudio will be tried if detected and will fallback to ALSA (Linux) or OSS (FreeBSD/OpenBSD)\&.
+where N is the index or name of the PulseAudio sink\&. You can obtain the name of the sink with the following command:
+.sp
+.if n \{\
+.RS 4
+.\}
+.nf
+$ pacmd list\-sinks | grep name:
+           name: <alsa_output\&.pci\-0000_00_14\&.2\&.analog\-stereo>
+.fi
+.if n \{\
+.RE
+.\}
+.sp
+The name is what\(cqs inside the angle brackets, not including them\&. If no sink is specified the default sink is used\&. If the device string is missing or is set to "default", PulseAudio will be tried if detected and will fallback to ALSA (Linux) or OSS (FreeBSD/OpenBSD)\&.
 .sp
 \fBExample order\fR: volume master
 .sp
@@ -480,6 +542,20 @@ volume master {
 .if n \{\
 .RE
 .\}
+.sp
+.if n \{\
+.RS 4
+.\}
+.nf
+volume master {
+        format = "♪: %volume"
+        format_muted = "♪: muted (%volume)"
+        device = "pulse:alsa_output\&.pci\-0000_00_14\&.2\&.analog\-stereo"
+}
+.fi
+.if n \{\
+.RE
+.\}
 .SH "UNIVERSAL MODULE OPTIONS"
 .sp
 When using the i3bar output format, there are a few additional options that can be used with all modules to customize their appearance:
@@ -498,6 +574,16 @@ min_width
 .RS 4
 The minimum width (in pixels) the module should occupy\&. If the module takes less space than the specified size, the block will be padded to the left and/or the right side, according to the defined alignment policy\&. This is useful when you want to prevent the whole status line from shifting when values take more or less space between each iteration\&. The option can also be a string\&. In this case, the width of the given text determines the minimum width of the block\&. This is useful when you want to set a sensible minimum width regardless of which font you are using, and at what particular size\&. Please note that a number enclosed with quotes will still be treated as a number\&.
 .RE
+.PP
+separator
+.RS 4
+A boolean value which specifies whether a separator line should be drawn after this block\&. The default is true, meaning the separator line will be drawn\&. Note that if you disable the separator line, there will still be a gap after the block, unless you also use separator_block_width\&.
+.RE
+.PP
+separator_block_width
+.RS 4
+The amount of pixels to leave blank after the block\&. In the middle of this gap, a separator symbol will be drawn unless separator is disabled\&. This is why the specified width should leave enough space for the separator symbol\&.
+.RE
 .sp
 \fBExample configuration\fR:
 .sp
@@ -509,6 +595,8 @@ disk "/" {
     format = "%avail"
     align = "left"
     min_width = 100
+    separator = false
+    separator_block_width = 1
 }
 .fi
 .if n \{\
@@ -581,7 +669,7 @@ done
 .sp
 Put that in some script, say \&.bin/my_i3status\&.sh and execute that instead of i3status\&.
 .sp
-Note that if you want to use the JSON output format (with colors in i3bar), you need to use a slightly more complex wrapper script\&. There are examples in the contrib/ folder, see http://code\&.i3wm\&.org/i3status/tree/contrib
+Note that if you want to use the JSON output format (with colors in i3bar), you need to use a slightly more complex wrapper script\&. There are examples in the contrib/ folder, see https://github\&.com/i3/i3status/tree/master/contrib
 .SH "SIGNALS"
 .sp
 When receiving SIGUSR1, i3status\(cqs nanosleep() will be interrupted and thus you will force an update\&. You can use killall \-USR1 i3status to force an update after changing the system volume, for example\&.
