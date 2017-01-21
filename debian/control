@@ -14,7 +14,7 @@ Build-Depends: debhelper (>= 9),
                libnl-genl-3-dev [linux-any],
                libpulse-dev,
                pkg-config
-Standards-Version: 3.9.6
+Standards-Version: 3.9.8
 Homepage: https://i3wm.org/i3status
 Vcs-Git: https://anonscm.debian.org/git/users/stapelberg/i3status.git
 Vcs-Browser: https://anonscm.debian.org/cgit/users/stapelberg/i3status.git/
