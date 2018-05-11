@@ -1,3 +1,16 @@
+i3status (2.12-1) unstable; urgency=medium
+
+  * Move the repository to salsa
+  * New upstream version 2.12
+  * drop patches (applied upstream)
+  * bump dh compat level
+  * switch to secure debian/copyright URI
+  * bump standards-version (no changes necessary)
+  * switch to secure URI in debian/watch
+  * Priority: extra is now optional
+
+ -- Michael Stapelberg <stapelberg@debian.org>  Fri, 11 May 2018 11:45:41 +0200
+
 i3status (2.11-1) unstable; urgency=medium
 
   * New upstream version 2.11
