@@ -138,9 +138,13 @@ static bool slurp_battery_info(struct battery_info *batt_info, yajl_gen json_gen
         if (BEGINS_WITH(last, "POWER_SUPPLY_ENERGY_NOW=")) {
             watt_as_unit = true;
             batt_info->remaining = atoi(walk + 1);
+            batt_info->percentage_remaining = -1;
         } else if (BEGINS_WITH(last, "POWER_SUPPLY_CHARGE_NOW=")) {
             watt_as_unit = false;
             batt_info->remaining = atoi(walk + 1);
+            batt_info->percentage_remaining = -1;
+        } else if (BEGINS_WITH(last, "POWER_SUPPLY_CAPACITY=") && batt_info->remaining == -1) {
+            batt_info->percentage_remaining = atoi(walk + 1);
         } else if (BEGINS_WITH(last, "POWER_SUPPLY_CURRENT_NOW="))
             batt_info->present_rate = abs(atoi(walk + 1));
         else if (BEGINS_WITH(last, "POWER_SUPPLY_VOLTAGE_NOW="))
@@ -171,11 +175,19 @@ static bool slurp_battery_info(struct battery_info *batt_info, yajl_gen json_gen
      * POWER_SUPPLY_CHARGE_NOW is the unit of measurement. The energy is
      * given in mWh, the charge in mAh. So calculate every value given in
      * ampere to watt */
-    if (!watt_as_unit && voltage != -1) {
-        batt_info->present_rate = (((float)voltage / 1000.0) * ((float)batt_info->present_rate / 1000.0));
-        batt_info->remaining = (((float)voltage / 1000.0) * ((float)batt_info->remaining / 1000.0));
-        batt_info->full_design = (((float)voltage / 1000.0) * ((float)batt_info->full_design / 1000.0));
-        batt_info->full_last = (((float)voltage / 1000.0) * ((float)batt_info->full_last / 1000.0));
+    if (!watt_as_unit && voltage >= 0) {
+        if (batt_info->present_rate > 0) {
+            batt_info->present_rate = (((float)voltage / 1000.0) * ((float)batt_info->present_rate / 1000.0));
+        }
+        if (batt_info->remaining > 0) {
+            batt_info->remaining = (((float)voltage / 1000.0) * ((float)batt_info->remaining / 1000.0));
+        }
+        if (batt_info->full_design > 0) {
+            batt_info->full_design = (((float)voltage / 1000.0) * ((float)batt_info->full_design / 1000.0));
+        }
+        if (batt_info->full_last > 0) {
+            batt_info->full_last = (((float)voltage / 1000.0) * ((float)batt_info->full_last / 1000.0));
+        }
     }
 #elif defined(__FreeBSD__) || defined(__FreeBSD_kernel__) || defined(__DragonFly__)
     int state;
@@ -482,7 +494,7 @@ void print_battery_info(yajl_gen json_gen, char *buffer, int number, const char 
     /* These OSes report battery stats in whole percent. */
     integer_battery_capacity = true;
 #endif
-#if defined(__FreeBSD__) || defined(__FreeBSD_kernel__) || defined(__DragonFly__)
+#if defined(__FreeBSD__) || defined(__FreeBSD_kernel__) || defined(__DragonFly__) || defined(__OpenBSD__)
     /* These OSes report battery time in minutes. */
     hide_seconds = true;
 #endif
@@ -495,8 +507,19 @@ void print_battery_info(yajl_gen json_gen, char *buffer, int number, const char 
             return;
     }
 
-    int full = (last_full_capacity ? batt_info.full_last : batt_info.full_design);
-    if (full < 0 && batt_info.percentage_remaining < 0) {
+    // *Choose* a measure of the 'full' battery. It is whichever is better of
+    // the battery's (hardware-given) design capacity (batt_info.full_design)
+    // and the battery's last known good charge (batt_info.full_last).
+    // We prefer the design capacity, but use the last capacity if we don't have it,
+    // or if we are asked to (last_full_capacity == true); but similarly we use
+    // the design capacity if we don't have the last capacity.
+    // If we don't have either then both full_design and full_last <= 0,
+    // which implies full <= 0, which bails out on the following line.
+    int full = batt_info.full_design;
+    if (full <= 0 || (last_full_capacity && batt_info.full_last > 0)) {
+        full = batt_info.full_last;
+    }
+    if (full <= 0 && batt_info.remaining < 0 && batt_info.percentage_remaining < 0) {
         /* We have no physical measurements and no estimates. Nothing
          * much we can report, then. */
         OUTPUT_FULL_TEXT(format_down);
@@ -598,6 +621,7 @@ void print_battery_info(yajl_gen json_gen, char *buffer, int number, const char 
         } else if (BEGINS_WITH(walk + 1, "emptytime")) {
             if (batt_info.seconds_remaining >= 0) {
                 time_t empty_time = time(NULL) + batt_info.seconds_remaining;
+                set_timezone(NULL); /* Use local time. */
                 struct tm *empty_tm = localtime(&empty_time);
 
                 if (hide_seconds)

@@ -111,6 +111,9 @@ static void *scalloc(size_t size) {
 }
 
 char *sstrdup(const char *str) {
+    if (str == NULL) {
+        return NULL;
+    }
     char *result = strdup(str);
     exit_if_null(result, "Error: out of memory (strdup())\n");
     return result;
@@ -422,6 +425,7 @@ int main(int argc, char *argv[]) {
         CFG_STR("format", "%usage", CFGF_NONE),
         CFG_STR("format_above_threshold", NULL, CFGF_NONE),
         CFG_STR("format_above_degraded_threshold", NULL, CFGF_NONE),
+        CFG_STR("path", "/proc/stat", CFGF_NONE),
         CFG_FLOAT("max_threshold", 95, CFGF_NONE),
         CFG_FLOAT("degraded_threshold", 90, CFGF_NONE),
         CFG_CUSTOM_ALIGN_OPT,
@@ -627,6 +631,11 @@ int main(int argc, char *argv[]) {
         die("Could not create socket\n");
 
     int interval = cfg_getint(cfg_general, "interval");
+    if (interval <= 0) {
+        die("Invalid interval attribute found in section %s, line %d: %d\n"
+            "Expected positive integer\n",
+            cfg_general->name, cfg_general->line, interval);
+    }
 
     /* One memory page which each plugin can use to buffer output.
      * Even though it’s unclean, we just assume that the user will not
@@ -751,7 +760,7 @@ int main(int argc, char *argv[]) {
 
             CASE_SEC("cpu_usage") {
                 SEC_OPEN_MAP("cpu_usage");
-                print_cpu_usage(json_gen, buffer, cfg_getstr(sec, "format"), cfg_getstr(sec, "format_above_threshold"), cfg_getstr(sec, "format_above_degraded_threshold"), cfg_getfloat(sec, "max_threshold"), cfg_getfloat(sec, "degraded_threshold"));
+                print_cpu_usage(json_gen, buffer, cfg_getstr(sec, "format"), cfg_getstr(sec, "format_above_threshold"), cfg_getstr(sec, "format_above_degraded_threshold"), cfg_getstr(sec, "path"), cfg_getfloat(sec, "max_threshold"), cfg_getfloat(sec, "degraded_threshold"));
                 SEC_CLOSE_MAP;
             }
         }
