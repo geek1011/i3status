@@ -1,6 +1,6 @@
 Source: i3status
 Section: utils
-Priority: extra
+Priority: optional
 Maintainer: Michael Stapelberg <stapelberg@debian.org>
 Build-Depends: debhelper (>= 11),
                libiw-dev [linux-any],
