@@ -14,7 +14,7 @@ Build-Depends: debhelper (>= 11),
                libnl-genl-3-dev [linux-any],
                libpulse-dev,
                pkg-config
-Standards-Version: 3.9.8
+Standards-Version: 4.1.4
 Homepage: https://i3wm.org/i3status
 Vcs-Git: https://salsa.debian.org/stapelberg/i3status.git
 Vcs-Browser: https://salsa.debian.org/stapelberg/i3status
