@@ -16,8 +16,8 @@ Build-Depends: debhelper (>= 9),
                pkg-config
 Standards-Version: 3.9.8
 Homepage: https://i3wm.org/i3status
-Vcs-Git: https://anonscm.debian.org/git/users/stapelberg/i3status.git
-Vcs-Browser: https://anonscm.debian.org/cgit/users/stapelberg/i3status.git/
+Vcs-Git: https://salsa.debian.org/stapelberg/i3status.git
+Vcs-Browser: https://salsa.debian.org/stapelberg/i3status
 
 Package: i3status
 Architecture: any
