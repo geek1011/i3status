@@ -13,7 +13,7 @@
 #include <err.h>
 #include <sys/types.h>
 #include <sys/sysctl.h>
-#define TZ_ZEROC 2732
+#define TZ_ZEROC 2731
 #define TZ_KELVTOC(x) (((x)-TZ_ZEROC) / 10), abs(((x)-TZ_ZEROC) % 10)
 #define TZ_AVG(x) ((x)-TZ_ZEROC) / 10
 #endif
@@ -112,7 +112,7 @@ static int read_temperature(char *thermal_zone, temperature_t *temperature) {
         /* 'path' is the node within the full path (defaults to acpitz0). */
         if (BEGINS_WITH(sensordev.xname, thermal_zone)) {
             mib[3] = SENSOR_TEMP;
-            /* Limit to temo0, but should retrieve from a full path... */
+            /* Limit to temp0, but should retrieve from a full path... */
             for (numt = 0; numt < 1 /*sensordev.maxnumt[SENSOR_TEMP]*/; numt++) {
                 mib[4] = numt;
                 if (sysctl(mib, 5, &sensor, &slen, NULL, 0) == -1) {
@@ -205,7 +205,7 @@ error_netbsd1:
 
 /*
  * Reads the CPU temperature from /sys/class/thermal/thermal_zone%d/temp (or
- * the user provided path) and returns the temperature in degree celcius.
+ * the user provided path) and returns the temperature in degree celsius.
  *
  */
 void print_cpu_temperature_info(yajl_gen json_gen, char *buffer, int zone, const char *path, const char *format, const char *format_above_threshold, int max_threshold) {
@@ -216,6 +216,8 @@ void print_cpu_temperature_info(yajl_gen json_gen, char *buffer, int zone, const
     bool colorful_output = false;
     char *thermal_zone;
     temperature_t temperature;
+    temperature.raw_value = 0;
+    sprintf(temperature.formatted_value, "%.2f", 0.0);
 
     if (path == NULL)
         asprintf(&thermal_zone, THERMAL_ZONE, zone);
