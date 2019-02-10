@@ -1,4 +1,5 @@
 // vim:ts=4:sw=4:expandtab
+#include <config.h>
 #include <time.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -34,17 +35,27 @@ void set_timezone(const char *tz) {
     tzset();
 }
 
-void print_time(yajl_gen json_gen, char *buffer, const char *title, const char *format, const char *tz, const char *locale, const char *format_time, time_t t) {
+void print_time(yajl_gen json_gen, char *buffer, const char *title, const char *format, const char *tz, const char *locale, const char *format_time, bool hide_if_equals_localtime, time_t t) {
     const char *walk;
     char *outwalk = buffer;
-    struct tm tm;
+    struct tm local_tm, tm;
     char timebuf[1024];
 
     if (title != NULL)
         INSTANCE(title);
 
+    set_timezone(NULL);
+    localtime_r(&t, &local_tm);
+
     set_timezone(tz);
     localtime_r(&t, &tm);
+
+    // When hide_if_equals_localtime is true, compare local and target time to display only if different
+    time_t local_t = mktime(&local_tm);
+    double diff = difftime(local_t, t);
+    if (hide_if_equals_localtime && diff == 0.0) {
+        goto out;
+    }
 
     if (locale != NULL) {
         setlocale(LC_ALL, locale);
@@ -57,13 +68,14 @@ void print_time(yajl_gen json_gen, char *buffer, const char *title, const char *
         for (walk = format; *walk != '\0'; walk++) {
             if (*walk != '%') {
                 *(outwalk++) = *walk;
-                continue;
-            }
 
-            if (BEGINS_WITH(walk + 1, "time")) {
+            } else if (BEGINS_WITH(walk + 1, "time")) {
                 strftime(timebuf, sizeof(timebuf), format_time, &tm);
                 maybe_escape_markup(timebuf, &outwalk);
                 walk += strlen("time");
+
+            } else {
+                *(outwalk++) = '%';
             }
         }
     }
@@ -72,6 +84,7 @@ void print_time(yajl_gen json_gen, char *buffer, const char *title, const char *
         setlocale(LC_ALL, "");
     }
 
+out:
     *outwalk = '\0';
     OUTPUT_FULL_TEXT(buffer);
 }

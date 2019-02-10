@@ -1,3 +1,0 @@
-version=3
-opts=pgpsigurlmangle=s/$/.asc/ \
-  https://i3wm.org/i3status/	.*/i3status/i3status-(\d[\d_.-]+)\.tar\.bz2$

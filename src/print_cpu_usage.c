@@ -1,4 +1,8 @@
 // vim:ts=4:sw=4:expandtab
+#include <config.h>
+#if defined(__linux__)
+#include <sys/sysinfo.h>
+#endif
 #include <stdlib.h>
 #include <limits.h>
 #include <stdio.h>
@@ -59,10 +63,10 @@ void print_cpu_usage(yajl_gen json_gen, char *buffer, const char *format, const 
     int diff_idle, diff_total, diff_usage;
     bool colorful_output = false;
 
-#if defined(LINUX)
+#if defined(__linux__)
 
     // Detecting if CPU count has changed
-    int curr_cpu_count = sysconf(_SC_NPROCESSORS_ONLN);
+    int curr_cpu_count = get_nprocs_conf();
     if (curr_cpu_count != cpu_count) {
         cpu_count = curr_cpu_count;
         free(prev_cpus);
@@ -71,19 +75,30 @@ void print_cpu_usage(yajl_gen json_gen, char *buffer, const char *format, const 
         curr_cpus = (struct cpu_usage *)calloc(cpu_count, sizeof(struct cpu_usage));
     }
 
+    memcpy(curr_cpus, prev_cpus, cpu_count * sizeof(struct cpu_usage));
     char buf[4096];
+    curr_cpu_count = get_nprocs();
     if (!slurp(path, buf, sizeof(buf)))
         goto error;
     // Parsing all cpu values using strtok
     if (strtok(buf, "\n") == NULL)
         goto error;
     char *buf_itr = NULL;
-    for (int cpu_idx = 0; cpu_idx < cpu_count; cpu_idx++) {
+    for (int idx = 0; idx < curr_cpu_count; ++idx) {
         buf_itr = strtok(NULL, "\n");
-        int curr_cpu_idx = -1;
-        if (!buf_itr || sscanf(buf_itr, "cpu%d %d %d %d %d", &curr_cpu_idx, &curr_cpus[cpu_idx].user, &curr_cpus[cpu_idx].nice, &curr_cpus[cpu_idx].system, &curr_cpus[cpu_idx].idle) != 5 || curr_cpu_idx != cpu_idx)
+        int cpu_idx, user, nice, system, idle;
+        if (!buf_itr || sscanf(buf_itr, "cpu%d %d %d %d %d", &cpu_idx, &user, &nice, &system, &idle) != 5) {
             goto error;
-        curr_cpus[cpu_idx].total = curr_cpus[cpu_idx].user + curr_cpus[cpu_idx].nice + curr_cpus[cpu_idx].system + curr_cpus[cpu_idx].idle;
+        }
+        if (cpu_idx < 0 || cpu_idx >= cpu_count)
+            goto error;
+        curr_cpus[cpu_idx].user = user;
+        curr_cpus[cpu_idx].nice = nice;
+        curr_cpus[cpu_idx].system = system;
+        curr_cpus[cpu_idx].idle = idle;
+        curr_cpus[cpu_idx].total = user + nice + system + idle;
+    }
+    for (int cpu_idx = 0; cpu_idx < cpu_count; cpu_idx++) {
         curr_all.user += curr_cpus[cpu_idx].user;
         curr_all.nice += curr_cpus[cpu_idx].nice;
         curr_all.system += curr_cpus[cpu_idx].system;
@@ -144,19 +159,19 @@ void print_cpu_usage(yajl_gen json_gen, char *buffer, const char *format, const 
     for (walk = selected_format; *walk != '\0'; walk++) {
         if (*walk != '%') {
             *(outwalk++) = *walk;
-            continue;
-        }
 
-        if (BEGINS_WITH(walk + 1, "usage")) {
+        } else if (BEGINS_WITH(walk + 1, "usage")) {
             outwalk += sprintf(outwalk, "%02d%s", diff_usage, pct_mark);
             walk += strlen("usage");
         }
-#if defined(LINUX)
-        if (BEGINS_WITH(walk + 1, "cpu")) {
-            int number = 0;
+#if defined(__linux__)
+        else if (BEGINS_WITH(walk + 1, "cpu")) {
+            int number = -1;
             sscanf(walk + 1, "cpu%d", &number);
-            if (number < 0 || number >= cpu_count) {
-                fprintf(stderr, "provided CPU number '%d' above detected number of CPU %d\n", number, cpu_count);
+            if (number == -1) {
+                fprintf(stderr, "i3status: provided CPU number cannot be parsed\n");
+            } else if (number >= cpu_count) {
+                fprintf(stderr, "i3status: provided CPU number '%d' above detected number of CPU %d\n", number, cpu_count);
             } else {
                 int cpu_diff_idle = curr_cpus[number].idle - prev_cpus[number].idle;
                 int cpu_diff_total = curr_cpus[number].total - prev_cpus[number].total;
@@ -165,17 +180,21 @@ void print_cpu_usage(yajl_gen json_gen, char *buffer, const char *format, const 
             }
             int padding = 1;
             int step = 10;
-            while (step < number) {
+            while (step <= number) {
                 step *= 10;
                 padding++;
             }
             walk += strlen("cpu") + padding;
         }
 #endif
+        else {
+            *(outwalk++) = '%';
+        }
     }
 
-    for (int i = 0; i < cpu_count; i++)
-        prev_cpus[i] = curr_cpus[i];
+    struct cpu_usage *temp_cpus = prev_cpus;
+    prev_cpus = curr_cpus;
+    curr_cpus = temp_cpus;
 
     if (colorful_output)
         END_COLOR;

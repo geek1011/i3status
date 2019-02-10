@@ -1,31 +1,36 @@
 // vim:ts=4:sw=4:expandtab
+#include <config.h>
 #include <ctype.h>
-#include <time.h>
-#include <string.h>
-#include <stdlib.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
 #include <yajl/yajl_gen.h>
 #include <yajl/yajl_version.h>
 
 #include "i3status.h"
 
-#if defined(LINUX)
+#if defined(__linux__)
 #include <errno.h>
 #include <glob.h>
 #include <sys/types.h>
 #endif
 
 #if defined(__FreeBSD__) || defined(__FreeBSD_kernel__) || defined(__DragonFly__)
-#include <sys/types.h>
-#include <sys/sysctl.h>
 #include <dev/acpica/acpiio.h>
+#include <sys/sysctl.h>
+#include <sys/types.h>
+#endif
+
+#if defined(__DragonFly__)
+#include <sys/fcntl.h>
 #endif
 
 #if defined(__OpenBSD__)
-#include <sys/types.h>
-#include <sys/ioctl.h>
-#include <sys/fcntl.h>
 #include <machine/apmvar.h>
+#include <sys/fcntl.h>
+#include <sys/ioctl.h>
+#include <sys/types.h>
 #endif
 
 #if defined(__NetBSD__)
@@ -55,7 +60,23 @@ struct battery_info {
     charging_status_t status;
 };
 
-#if defined(LINUX) || defined(__NetBSD__)
+#if defined(__DragonFly__)
+#define ACPIDEV "/dev/acpi"
+static int acpifd;
+
+static bool acpi_init(void) {
+    if (acpifd == 0) {
+        acpifd = open(ACPIDEV, O_RDWR);
+        if (acpifd == -1)
+            acpifd = open(ACPIDEV, O_RDONLY);
+        if (acpifd == -1)
+            return false;
+    }
+    return true;
+}
+#endif
+
+#if defined(__linux__) || defined(__NetBSD__)
 /*
  * Add batt_info data to acc.
  */
@@ -112,7 +133,7 @@ static void add_battery_info(struct battery_info *acc, const struct battery_info
 static bool slurp_battery_info(struct battery_info *batt_info, yajl_gen json_gen, char *buffer, int number, const char *path, const char *format_down) {
     char *outwalk = buffer;
 
-#if defined(LINUX)
+#if defined(__linux__)
     char buf[1024];
     const char *walk, *last;
     bool watt_as_unit = false;
@@ -159,7 +180,7 @@ static bool slurp_battery_info(struct battery_info *batt_info, yajl_gen json_gen
             batt_info->status = CS_CHARGING;
         else if (BEGINS_WITH(last, "POWER_SUPPLY_STATUS=Full"))
             batt_info->status = CS_FULL;
-        else if (BEGINS_WITH(last, "POWER_SUPPLY_STATUS=Discharging"))
+        else if (BEGINS_WITH(last, "POWER_SUPPLY_STATUS=Discharging") || BEGINS_WITH(last, "POWER_SUPPLY_STATUS=Not charging"))
             batt_info->status = CS_DISCHARGING;
         else if (BEGINS_WITH(last, "POWER_SUPPLY_STATUS="))
             batt_info->status = CS_UNKNOWN;
@@ -189,7 +210,34 @@ static bool slurp_battery_info(struct battery_info *batt_info, yajl_gen json_gen
             batt_info->full_last = (((float)voltage / 1000.0) * ((float)batt_info->full_last / 1000.0));
         }
     }
-#elif defined(__FreeBSD__) || defined(__FreeBSD_kernel__) || defined(__DragonFly__)
+#elif defined(__DragonFly__)
+    union acpi_battery_ioctl_arg battio;
+    if (acpi_init()) {
+        battio.unit = number;
+        ioctl(acpifd, ACPIIO_BATT_GET_BIF, &battio);
+        batt_info->full_design = battio.bif.dcap;
+        batt_info->full_last = battio.bif.lfcap;
+        battio.unit = number;
+        ioctl(acpifd, ACPIIO_BATT_GET_BATTINFO, &battio);
+        batt_info->percentage_remaining = battio.battinfo.cap;
+        batt_info->present_rate = battio.battinfo.rate;
+        batt_info->seconds_remaining = battio.battinfo.min * 60;
+        switch (battio.battinfo.state) {
+            case 0:
+                batt_info->status = CS_FULL;
+                break;
+            case ACPI_BATT_STAT_CHARGING:
+                batt_info->status = CS_CHARGING;
+                break;
+            case ACPI_BATT_STAT_DISCHARG:
+                batt_info->status = CS_DISCHARGING;
+                break;
+            default:
+                batt_info->status = CS_UNKNOWN;
+        }
+        OUTPUT_FULL_TEXT(format_down);
+    }
+#elif defined(__FreeBSD__) || defined(__FreeBSD_kernel__)
     int state;
     int sysctl_rslt;
     size_t sysctl_size = sizeof(sysctl_rslt);
@@ -422,7 +470,7 @@ static bool slurp_battery_info(struct battery_info *batt_info, yajl_gen json_gen
  * Returns false on error, and an error message will have been written.
  */
 static bool slurp_all_batteries(struct battery_info *batt_info, yajl_gen json_gen, char *buffer, const char *path, const char *format_down) {
-#if defined(LINUX)
+#if defined(__linux__)
     char *outwalk = buffer;
     bool is_found = false;
 
@@ -450,14 +498,17 @@ static bool slurp_all_batteries(struct battery_info *batt_info, yajl_gen json_ge
                 .present_rate = 0,
                 .status = CS_UNKNOWN,
             };
-            if (!slurp_battery_info(&batt_buf, json_gen, buffer, i, globbuf.gl_pathv[i], format_down))
+            if (!slurp_battery_info(&batt_buf, json_gen, buffer, i, globbuf.gl_pathv[i], format_down)) {
+                globfree(&globbuf);
+                free(globpath);
                 return false;
+            }
 
             is_found = true;
             add_battery_info(batt_info, &batt_buf);
         }
+        globfree(&globbuf);
     }
-    globfree(&globbuf);
     free(globpath);
 
     if (!is_found) {
@@ -572,10 +623,8 @@ void print_battery_info(yajl_gen json_gen, char *buffer, int number, const char 
 
         if (*walk != '%') {
             *(outwalk++) = *walk;
-            continue;
-        }
 
-        if (BEGINS_WITH(walk + 1, "status")) {
+        } else if (BEGINS_WITH(walk + 1, "status")) {
             const char *statusstr;
             switch (batt_info.status) {
                 case CS_CHARGING:
@@ -593,6 +642,7 @@ void print_battery_info(yajl_gen json_gen, char *buffer, int number, const char 
 
             outwalk += sprintf(outwalk, "%s", statusstr);
             walk += strlen("status");
+
         } else if (BEGINS_WITH(walk + 1, "percentage")) {
             if (integer_battery_capacity) {
                 outwalk += sprintf(outwalk, "%.00f%s", batt_info.percentage_remaining, pct_mark);
@@ -600,6 +650,7 @@ void print_battery_info(yajl_gen json_gen, char *buffer, int number, const char 
                 outwalk += sprintf(outwalk, "%.02f%s", batt_info.percentage_remaining, pct_mark);
             }
             walk += strlen("percentage");
+
         } else if (BEGINS_WITH(walk + 1, "remaining")) {
             if (batt_info.seconds_remaining >= 0) {
                 int seconds, hours, minutes;
@@ -618,6 +669,7 @@ void print_battery_info(yajl_gen json_gen, char *buffer, int number, const char 
             }
             walk += strlen("remaining");
             EAT_SPACE_FROM_OUTPUT_IF_NO_OUTPUT();
+
         } else if (BEGINS_WITH(walk + 1, "emptytime")) {
             if (batt_info.seconds_remaining >= 0) {
                 time_t empty_time = time(NULL) + batt_info.seconds_remaining;
@@ -633,12 +685,16 @@ void print_battery_info(yajl_gen json_gen, char *buffer, int number, const char 
             }
             walk += strlen("emptytime");
             EAT_SPACE_FROM_OUTPUT_IF_NO_OUTPUT();
+
         } else if (BEGINS_WITH(walk + 1, "consumption")) {
             if (batt_info.present_rate >= 0)
                 outwalk += sprintf(outwalk, "%1.2fW", batt_info.present_rate / 1e6);
 
             walk += strlen("consumption");
             EAT_SPACE_FROM_OUTPUT_IF_NO_OUTPUT();
+
+        } else {
+            *(outwalk++) = '%';
         }
     }
 

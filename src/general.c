@@ -1,4 +1,5 @@
 // vim:ts=4:sw=4:expandtab
+#include <config.h>
 #include <sys/types.h>
 #include <string.h>
 #include <stdarg.h>
@@ -51,12 +52,10 @@ char *skip_character(char *input, char character, int amount) {
  *
  */
 void die(const char *fmt, ...) {
-    char buffer[512];
     va_list ap;
     va_start(ap, fmt);
-    (void)vsnprintf(buffer, sizeof(buffer), fmt, ap);
+    (void)vfprintf(stderr, fmt, ap);
     va_end(ap);
 
-    fprintf(stderr, "%s", buffer);
     exit(EXIT_FAILURE);
 }

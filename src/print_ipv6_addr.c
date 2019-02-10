@@ -1,4 +1,5 @@
 // vim:ts=4:sw=4:expandtab
+#include <config.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -133,12 +134,13 @@ void print_ipv6_info(yajl_gen json_gen, char *buffer, const char *format_up, con
     for (walk = format_up; *walk != '\0'; walk++) {
         if (*walk != '%') {
             *(outwalk++) = *walk;
-            continue;
-        }
 
-        if (BEGINS_WITH(walk + 1, "ip")) {
+        } else if (BEGINS_WITH(walk + 1, "ip")) {
             outwalk += sprintf(outwalk, "%s", addr_string);
             walk += strlen("ip");
+
+        } else {
+            *(outwalk++) = '%';
         }
     }
     END_COLOR;

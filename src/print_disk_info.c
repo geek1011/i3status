@@ -1,4 +1,5 @@
 // vim:ts=4:sw=4:expandtab
+#include <config.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -7,7 +8,7 @@
 #include <sys/stat.h>
 #include <sys/statvfs.h>
 #include <sys/types.h>
-#if defined(__FreeBSD__) || defined(__FreeBSD_kernel__) || (__OpenBSD__) || defined(__DragonFly__) || defined(__APPLE__)
+#if defined(__FreeBSD__) || defined(__FreeBSD_kernel__) || defined(__OpenBSD__) || defined(__DragonFly__) || defined(__APPLE__)
 #include <sys/param.h>
 #include <sys/mount.h>
 #elif defined(__NetBSD__)
@@ -145,15 +146,22 @@ void print_disk_info(yajl_gen json_gen, char *buffer, const char *path, const ch
         if (strlen(sanitized) > 1 && sanitized[strlen(sanitized) - 1] == '/')
             sanitized[strlen(sanitized) - 1] = '\0';
         FILE *mntentfile = setmntent("/etc/mtab", "r");
-        struct mntent *m;
-
-        while ((m = getmntent(mntentfile)) != NULL) {
-            if (strcmp(m->mnt_dir, sanitized) == 0) {
-                mounted = true;
-                break;
-            }
+        if (mntentfile == NULL) {
+            mntentfile = setmntent("/proc/mounts", "r");
         }
-        endmntent(mntentfile);
+        if (mntentfile == NULL) {
+            fprintf(stderr, "i3status: files /etc/mtab and /proc/mounts aren't accessible\n");
+        } else {
+            struct mntent *m;
+
+            while ((m = getmntent(mntentfile)) != NULL) {
+                if (strcmp(m->mnt_dir, sanitized) == 0) {
+                    mounted = true;
+                    break;
+                }
+            }
+            endmntent(mntentfile);
+        }
         free(sanitized);
     }
 #endif
@@ -172,47 +180,41 @@ void print_disk_info(yajl_gen json_gen, char *buffer, const char *path, const ch
     for (walk = selected_format; *walk != '\0'; walk++) {
         if (*walk != '%') {
             *(outwalk++) = *walk;
-            continue;
-        }
 
-        if (BEGINS_WITH(walk + 1, "free")) {
+        } else if (BEGINS_WITH(walk + 1, "free")) {
             outwalk += print_bytes_human(outwalk, (uint64_t)buf.f_bsize * (uint64_t)buf.f_bfree, prefix_type);
             walk += strlen("free");
-        }
 
-        if (BEGINS_WITH(walk + 1, "used")) {
+        } else if (BEGINS_WITH(walk + 1, "used")) {
             outwalk += print_bytes_human(outwalk, (uint64_t)buf.f_bsize * ((uint64_t)buf.f_blocks - (uint64_t)buf.f_bfree), prefix_type);
             walk += strlen("used");
-        }
 
-        if (BEGINS_WITH(walk + 1, "total")) {
+        } else if (BEGINS_WITH(walk + 1, "total")) {
             outwalk += print_bytes_human(outwalk, (uint64_t)buf.f_bsize * (uint64_t)buf.f_blocks, prefix_type);
             walk += strlen("total");
-        }
 
-        if (BEGINS_WITH(walk + 1, "avail")) {
+        } else if (BEGINS_WITH(walk + 1, "avail")) {
             outwalk += print_bytes_human(outwalk, (uint64_t)buf.f_bsize * (uint64_t)buf.f_bavail, prefix_type);
             walk += strlen("avail");
-        }
 
-        if (BEGINS_WITH(walk + 1, "percentage_free")) {
+        } else if (BEGINS_WITH(walk + 1, "percentage_free")) {
             outwalk += sprintf(outwalk, "%.01f%s", 100.0 * (double)buf.f_bfree / (double)buf.f_blocks, pct_mark);
             walk += strlen("percentage_free");
-        }
 
-        if (BEGINS_WITH(walk + 1, "percentage_used_of_avail")) {
+        } else if (BEGINS_WITH(walk + 1, "percentage_used_of_avail")) {
             outwalk += sprintf(outwalk, "%.01f%s", 100.0 * (double)(buf.f_blocks - buf.f_bavail) / (double)buf.f_blocks, pct_mark);
             walk += strlen("percentage_used_of_avail");
-        }
 
-        if (BEGINS_WITH(walk + 1, "percentage_used")) {
+        } else if (BEGINS_WITH(walk + 1, "percentage_used")) {
             outwalk += sprintf(outwalk, "%.01f%s", 100.0 * (double)(buf.f_blocks - buf.f_bfree) / (double)buf.f_blocks, pct_mark);
             walk += strlen("percentage_used");
-        }
 
-        if (BEGINS_WITH(walk + 1, "percentage_avail")) {
+        } else if (BEGINS_WITH(walk + 1, "percentage_avail")) {
             outwalk += sprintf(outwalk, "%.01f%s", 100.0 * (double)buf.f_bavail / (double)buf.f_blocks, pct_mark);
             walk += strlen("percentage_avail");
+
+        } else {
+            *(outwalk++) = '%';
         }
     }
 

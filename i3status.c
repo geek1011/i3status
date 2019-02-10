@@ -11,6 +11,7 @@
  * See file LICENSE for license information.
  *
  */
+#include <config.h>
 #include <limits.h>
 #include <string.h>
 #include <stdio.h>
@@ -44,7 +45,8 @@
     CFG_STR_CB("align", NULL, CFGF_NONE, parse_align)
 
 #define CFG_COLOR_OPTS(good, degraded, bad)             \
-    CFG_STR("color_good", good, CFGF_NONE),             \
+    CFG_STR("color_good", good, CFGF_NONE)              \
+    ,                                                   \
         CFG_STR("color_degraded", degraded, CFGF_NONE), \
         CFG_STR("color_bad", bad, CFGF_NONE)
 
@@ -106,7 +108,7 @@ static bool path_exists(const char *path) {
 
 static void *scalloc(size_t size) {
     void *result = calloc(size, 1);
-    exit_if_null(result, "Error: out of memory (calloc(%zd))\n", size);
+    exit_if_null(result, "Error: out of memory (calloc(%zu))\n", size);
     return result;
 }
 
@@ -142,7 +144,7 @@ static int parse_min_width(cfg_t *context, cfg_opt_t *option, const char *value,
     long num = strtol(value, &end, 10);
 
     if (num < 0)
-        die("Invalid min_width attribute found in section %s, line %d: %d\n"
+        die("Invalid min_width attribute found in section %s, line %d: %ld\n"
             "Expected positive integer or string\n",
             context->name, context->line, num);
     else if (num == LONG_MIN || num == LONG_MAX || (end && *end != '\0'))
@@ -226,9 +228,10 @@ static char *resolve_tilde(const char *path) {
     } else {
         head = globbuf.gl_pathv[0];
         result = scalloc(strlen(head) + (tail ? strlen(tail) : 0) + 1);
-        strncpy(result, head, strlen(head));
-        if (tail)
-            strncat(result, tail, strlen(tail));
+        strcpy(result, head);
+        if (tail) {
+            strcat(result, tail);
+        }
     }
     globfree(&globbuf);
 
@@ -281,8 +284,7 @@ static char *get_config_path(void) {
         return sstrdup(config_path);
 
     die("Unable to find the configuration file (looked at "
-        "~/.i3status.conf, $XDG_CONFIG_HOME/i3status/config, "
-        "/etc/i3status.conf and $XDG_CONFIG_DIRS/i3status/config)");
+        "~/.i3status.conf, $XDG_CONFIG_HOME/i3status/config, " SYSCONFDIR "/i3status.conf and $XDG_CONFIG_DIRS/i3status/config)");
     return NULL;
 }
 
@@ -336,6 +338,7 @@ int main(int argc, char *argv[]) {
     cfg_opt_t wireless_opts[] = {
         CFG_STR("format_up", "W: (%quality at %essid, %bitrate) %ip", CFGF_NONE),
         CFG_STR("format_down", "W: down", CFGF_NONE),
+        CFG_STR("format_quality", "%3d%s", CFGF_NONE),
         CFG_CUSTOM_ALIGN_OPT,
         CFG_CUSTOM_COLOR_OPTS,
         CFG_CUSTOM_MIN_WIDTH_OPT,
@@ -375,7 +378,7 @@ int main(int argc, char *argv[]) {
         CFG_STR("threshold_type", "time", CFGF_NONE),
         CFG_BOOL("last_full_capacity", false, CFGF_NONE),
         CFG_BOOL("integer_battery_capacity", false, CFGF_NONE),
-        CFG_BOOL("hide_seconds", false, CFGF_NONE),
+        CFG_BOOL("hide_seconds", true, CFGF_NONE),
         CFG_CUSTOM_ALIGN_OPT,
         CFG_CUSTOM_COLOR_OPTS,
         CFG_CUSTOM_MIN_WIDTH_OPT,
@@ -396,6 +399,7 @@ int main(int argc, char *argv[]) {
         CFG_STR("timezone", "", CFGF_NONE),
         CFG_STR("locale", "", CFGF_NONE),
         CFG_STR("format_time", NULL, CFGF_NONE),
+        CFG_BOOL("hide_if_equals_localtime", false, CFGF_NONE),
         CFG_CUSTOM_ALIGN_OPT,
         CFG_CUSTOM_MIN_WIDTH_OPT,
         CFG_CUSTOM_SEPARATOR_OPT,
@@ -414,6 +418,19 @@ int main(int argc, char *argv[]) {
         CFG_STR("format", "%1min %5min %15min", CFGF_NONE),
         CFG_STR("format_above_threshold", NULL, CFGF_NONE),
         CFG_FLOAT("max_threshold", 5, CFGF_NONE),
+        CFG_CUSTOM_ALIGN_OPT,
+        CFG_CUSTOM_COLOR_OPTS,
+        CFG_CUSTOM_MIN_WIDTH_OPT,
+        CFG_CUSTOM_SEPARATOR_OPT,
+        CFG_CUSTOM_SEP_BLOCK_WIDTH_OPT,
+        CFG_END()};
+
+    cfg_opt_t memory_opts[] = {
+        CFG_STR("format", "%used %free %available", CFGF_NONE),
+        CFG_STR("format_degraded", NULL, CFGF_NONE),
+        CFG_STR("threshold_degraded", NULL, CFGF_NONE),
+        CFG_STR("threshold_critical", NULL, CFGF_NONE),
+        CFG_STR("memory_used_method", "classical", CFGF_NONE),
         CFG_CUSTOM_ALIGN_OPT,
         CFG_CUSTOM_COLOR_OPTS,
         CFG_CUSTOM_MIN_WIDTH_OPT,
@@ -490,6 +507,7 @@ int main(int argc, char *argv[]) {
         CFG_SEC("tztime", tztime_opts, CFGF_TITLE | CFGF_MULTI),
         CFG_SEC("ddate", ddate_opts, CFGF_NONE),
         CFG_SEC("load", load_opts, CFGF_NONE),
+        CFG_SEC("memory", memory_opts, CFGF_NONE),
         CFG_SEC("cpu_usage", usage_opts, CFGF_NONE),
         CFG_END()};
 
@@ -649,7 +667,7 @@ int main(int argc, char *argv[]) {
 
     while (1) {
         if (exit_upon_signal) {
-            fprintf(stderr, "Exiting due to signal.\n");
+            fprintf(stderr, "i3status: exiting due to signal.\n");
             exit(1);
         }
         struct timeval tv;
@@ -679,7 +697,7 @@ int main(int argc, char *argv[]) {
                     interface = first_eth_interface(NET_TYPE_WIRELESS);
                 if (interface == NULL)
                     interface = title;
-                print_wireless_info(json_gen, buffer, interface, cfg_getstr(sec, "format_up"), cfg_getstr(sec, "format_down"));
+                print_wireless_info(json_gen, buffer, interface, cfg_getstr(sec, "format_up"), cfg_getstr(sec, "format_down"), cfg_getstr(sec, "format_quality"));
                 SEC_CLOSE_MAP;
             }
 
@@ -724,15 +742,21 @@ int main(int argc, char *argv[]) {
                 SEC_CLOSE_MAP;
             }
 
+            CASE_SEC("memory") {
+                SEC_OPEN_MAP("memory");
+                print_memory(json_gen, buffer, cfg_getstr(sec, "format"), cfg_getstr(sec, "format_degraded"), cfg_getstr(sec, "threshold_degraded"), cfg_getstr(sec, "threshold_critical"), cfg_getstr(sec, "memory_used_method"));
+                SEC_CLOSE_MAP;
+            }
+
             CASE_SEC("time") {
                 SEC_OPEN_MAP("time");
-                print_time(json_gen, buffer, NULL, cfg_getstr(sec, "format"), NULL, NULL, NULL, tv.tv_sec);
+                print_time(json_gen, buffer, NULL, cfg_getstr(sec, "format"), NULL, NULL, NULL, false, tv.tv_sec);
                 SEC_CLOSE_MAP;
             }
 
             CASE_SEC_TITLE("tztime") {
                 SEC_OPEN_MAP("tztime");
-                print_time(json_gen, buffer, title, cfg_getstr(sec, "format"), cfg_getstr(sec, "timezone"), cfg_getstr(sec, "locale"), cfg_getstr(sec, "format_time"), tv.tv_sec);
+                print_time(json_gen, buffer, title, cfg_getstr(sec, "format"), cfg_getstr(sec, "timezone"), cfg_getstr(sec, "locale"), cfg_getstr(sec, "format_time"), cfg_getbool(sec, "hide_if_equals_localtime"), tv.tv_sec);
                 SEC_CLOSE_MAP;
             }
 

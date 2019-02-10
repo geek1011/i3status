@@ -1,7 +1,7 @@
 Source: i3status
 Section: utils
 Priority: optional
-Maintainer: Michael Stapelberg <stapelberg@debian.org>
+Maintainer: Patrick Gaskin <patrick@pgaskin.net>
 Build-Depends: debhelper (>= 11),
                libiw-dev [linux-any],
                libconfuse-dev,
@@ -16,8 +16,8 @@ Build-Depends: debhelper (>= 11),
                pkg-config
 Standards-Version: 4.1.4
 Homepage: https://i3wm.org/i3status
-Vcs-Git: https://salsa.debian.org/stapelberg/i3status.git
-Vcs-Browser: https://salsa.debian.org/stapelberg/i3status
+Vcs-Git: https://github.com/geek1011/i3status.git
+Vcs-Browser: https://github.com/geek1011/i3status
 
 Package: i3status
 Architecture: any

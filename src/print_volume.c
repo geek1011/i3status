@@ -1,4 +1,5 @@
 // vim:ts=4:sw=4:expandtab
+#include <config.h>
 #include <time.h>
 #include <string.h>
 #include <stdlib.h>
@@ -8,9 +9,10 @@
 #include <yajl/yajl_gen.h>
 #include <yajl/yajl_version.h>
 
-#ifdef LINUX
+#ifdef __linux__
 #include <alsa/asoundlib.h>
 #include <alloca.h>
+#include <math.h>
 #endif
 
 #if defined(__FreeBSD__) || defined(__DragonFly__)
@@ -29,21 +31,44 @@
 #include "i3status.h"
 #include "queue.h"
 
-static char *apply_volume_format(const char *fmt, char *outwalk, int ivolume) {
+#define ALSA_VOLUME(channel)                                                    \
+    err = snd_mixer_selem_get_##channel##_dB_range(elem, &min, &max) ||         \
+          snd_mixer_selem_get_##channel##_dB(elem, 0, &val);                    \
+    if (err != 0 || min >= max) {                                               \
+        err = snd_mixer_selem_get_##channel##_volume_range(elem, &min, &max) || \
+              snd_mixer_selem_get_##channel##_volume(elem, 0, &val);            \
+        force_linear = true;                                                    \
+    }
+
+#define ALSA_MUTE_SWITCH(channel)                                                        \
+    if ((err = snd_mixer_selem_get_##channel##_switch(elem, 0, &pbval)) < 0)             \
+        fprintf(stderr, "i3status: ALSA: " #channel "_switch: %s\n", snd_strerror(err)); \
+    if (!pbval) {                                                                        \
+        START_COLOR("color_degraded");                                                   \
+        fmt = fmt_muted;                                                                 \
+    }
+
+static char *apply_volume_format(const char *fmt, char *outwalk, int ivolume, const char *devicename) {
     const char *walk = fmt;
 
     for (; *walk != '\0'; walk++) {
         if (*walk != '%') {
             *(outwalk++) = *walk;
-            continue;
-        }
-        if (BEGINS_WITH(walk + 1, "%")) {
+
+        } else if (BEGINS_WITH(walk + 1, "%")) {
             outwalk += sprintf(outwalk, "%s", pct_mark);
             walk += strlen("%");
-        }
-        if (BEGINS_WITH(walk + 1, "volume")) {
+
+        } else if (BEGINS_WITH(walk + 1, "volume")) {
             outwalk += sprintf(outwalk, "%d%s", ivolume, pct_mark);
             walk += strlen("volume");
+
+        } else if (BEGINS_WITH(walk + 1, "devicename")) {
+            outwalk += sprintf(outwalk, "%s", devicename);
+            walk += strlen("devicename");
+
+        } else {
+            *(outwalk++) = '%';
         }
     }
     return outwalk;
@@ -61,7 +86,7 @@ void print_volume(yajl_gen json_gen, char *buffer, const char *fmt, const char *
         free(instance);
     }
 
-#ifndef __OpenBSD__
+#if !defined(__DragonFly__) && !defined(__OpenBSD__)
     /* Try PulseAudio first */
 
     /* If the device name has the format "pulse[:N]" where N is the
@@ -73,47 +98,65 @@ void print_volume(yajl_gen json_gen, char *buffer, const char *fmt, const char *
                                         !isdigit(device[strlen("pulse:")])
                                     ? device + strlen("pulse:")
                                     : NULL;
-        int cvolume = pulse_initialize() ? volume_pulseaudio(sink_idx, sink_name) : 0;
+        int cvolume = 0;
+        char description[MAX_SINK_DESCRIPTION_LEN] = {'\0'};
+
+        if (pulse_initialize()) {
+            cvolume = volume_pulseaudio(sink_idx, sink_name);
+            /* false result means error, stick to empty-string */
+            if (!description_pulseaudio(sink_idx, sink_name, description)) {
+                description[0] = '\0';
+            }
+        }
+
         int ivolume = DECOMPOSE_VOLUME(cvolume);
         bool muted = DECOMPOSE_MUTED(cvolume);
         if (muted) {
             START_COLOR("color_degraded");
             pbval = 0;
         }
+
         /* negative result means error, stick to 0 */
         if (ivolume < 0)
             ivolume = 0;
         outwalk = apply_volume_format(muted ? fmt_muted : fmt,
                                       outwalk,
-                                      ivolume);
+                                      ivolume,
+                                      description);
         goto out;
     } else if (!strcasecmp(device, "default") && pulse_initialize()) {
         /* no device specified or "default" set */
+        char description[MAX_SINK_DESCRIPTION_LEN];
+        bool success = description_pulseaudio(DEFAULT_SINK_INDEX, NULL, description);
         int cvolume = volume_pulseaudio(DEFAULT_SINK_INDEX, NULL);
         int ivolume = DECOMPOSE_VOLUME(cvolume);
         bool muted = DECOMPOSE_MUTED(cvolume);
-        if (ivolume >= 0) {
+        if (ivolume >= 0 && success) {
             if (muted) {
                 START_COLOR("color_degraded");
                 pbval = 0;
             }
             outwalk = apply_volume_format(muted ? fmt_muted : fmt,
                                           outwalk,
-                                          ivolume);
+                                          ivolume,
+                                          description);
             goto out;
         }
-        /* negative result means error, fail PulseAudio attempt */
+        /* negative result or NULL description means error, fail PulseAudio attempt */
     }
 /* If some other device was specified or PulseAudio is not detected,
  * proceed to ALSA / OSS */
 #endif
 
-#ifdef LINUX
+#ifdef __linux__
+    const long MAX_LINEAR_DB_SCALE = 24;
     int err;
     snd_mixer_t *m;
     snd_mixer_selem_id_t *sid;
     snd_mixer_elem_t *elem;
     long min, max, val;
+    const char *mixer_name;
+    bool force_linear = false;
     int avg;
 
     if ((err = snd_mixer_open(&m, 0)) < 0) {
@@ -151,7 +194,7 @@ void print_volume(yajl_gen json_gen, char *buffer, const char *fmt, const char *
     snd_mixer_selem_id_set_index(sid, mixer_idx);
     snd_mixer_selem_id_set_name(sid, mixer);
     if (!(elem = snd_mixer_find_selem(m, sid))) {
-        fprintf(stderr, "i3status: ALSA: Cannot find mixer %s (index %i)\n",
+        fprintf(stderr, "i3status: ALSA: Cannot find mixer %s (index %u)\n",
                 snd_mixer_selem_id_get_name(sid), snd_mixer_selem_id_get_index(sid));
         snd_mixer_close(m);
         snd_mixer_selem_id_free(sid);
@@ -159,37 +202,57 @@ void print_volume(yajl_gen json_gen, char *buffer, const char *fmt, const char *
     }
 
     /* Get the volume range to convert the volume later */
-    snd_mixer_selem_get_playback_volume_range(elem, &min, &max);
-
     snd_mixer_handle_events(m);
-    snd_mixer_selem_get_playback_volume(elem, 0, &val);
-    if (max != 100) {
-        float avgf = ((float)val / max) * 100;
+    if (!strncasecmp(mixer, "capture", strlen("capture"))) {
+        ALSA_VOLUME(capture)
+    } else {
+        ALSA_VOLUME(playback)
+    }
+
+    if (err != 0) {
+        fprintf(stderr, "i3status: ALSA: Cannot get playback volume.\n");
+        goto out;
+    }
+
+    mixer_name = snd_mixer_selem_get_name(elem);
+    if (!mixer_name) {
+        fprintf(stderr, "i3status: ALSA: NULL mixer_name.\n");
+        goto out;
+    }
+
+    /* Use linear mapping for raw register values or small ranges of 24 dB */
+    if (force_linear || max - min <= MAX_LINEAR_DB_SCALE * 100) {
+        float avgf = ((float)(val - min) / (max - min)) * 100;
         avg = (int)avgf;
         avg = (avgf - avg < 0.5 ? avg : (avg + 1));
-    } else
-        avg = (int)val;
+    } else {
+        /* mapped volume to be more natural for the human ear */
+        double normalized = exp10((val - max) / 6000.0);
+        if (min != SND_CTL_TLV_DB_GAIN_MUTE) {
+            double min_norm = exp10((min - max) / 6000.0);
+            normalized = (normalized - min_norm) / (1 - min_norm);
+        }
+        avg = lround(normalized * 100);
+    }
 
     /* Check for mute */
     if (snd_mixer_selem_has_playback_switch(elem)) {
-        if ((err = snd_mixer_selem_get_playback_switch(elem, 0, &pbval)) < 0)
-            fprintf(stderr, "i3status: ALSA: playback_switch: %s\n", snd_strerror(err));
-        if (!pbval) {
-            START_COLOR("color_degraded");
-            fmt = fmt_muted;
-        }
+        ALSA_MUTE_SWITCH(playback)
+    } else if (snd_mixer_selem_has_capture_switch(elem)) {
+        ALSA_MUTE_SWITCH(capture)
     }
+
+    outwalk = apply_volume_format(fmt, outwalk, avg, mixer_name);
 
     snd_mixer_close(m);
     snd_mixer_selem_id_free(sid);
-
-    outwalk = apply_volume_format(fmt, outwalk, avg);
 
 #endif
 #if defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__DragonFly__)
     char *mixerpath;
     char defaultmixer[] = "/dev/mixer";
     int mixfd, vol, devmask = 0;
+    const char *devicename = "UNSUPPORTED"; /* TODO: implement support for this */
     pbval = 1;
 
     if (mixer_idx > 0)
@@ -291,7 +354,7 @@ void print_volume(yajl_gen json_gen, char *buffer, const char *fmt, const char *
     }
 
 #endif
-    outwalk = apply_volume_format(fmt, outwalk, vol & 0x7f);
+    outwalk = apply_volume_format(fmt, outwalk, vol & 0x7f, devicename);
     close(mixfd);
 #endif
 
