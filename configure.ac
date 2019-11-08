@@ -2,7 +2,7 @@
 # Run autoreconf -fi to generate a configure script from this file.
 
 AC_PREREQ([2.69])
-AC_INIT([i3status], [2.12], [https://github.com/i3/i3status/issues])
+AC_INIT([i3status], [2.13], [https://github.com/i3/i3status/issues])
 # For AX_EXTEND_SRCDIR
 AX_ENABLE_BUILDDIR
 AM_INIT_AUTOMAKE([foreign subdir-objects -Wall no-dist-gzip dist-bzip2])
@@ -80,14 +80,28 @@ AC_CANONICAL_HOST
 PKG_CHECK_MODULES([CONFUSE], [libconfuse])
 PKG_CHECK_MODULES([YAJL], [yajl])
 
+AC_ARG_ENABLE(pulseaudio,
+  AS_HELP_STRING(
+    [--disable-pulseaudio],
+    [build without pulseaudio support]),
+  [ax_pulse=$enableval],
+  [ax_pulse=yes])
+AM_CONDITIONAL([PULSE], [test x$ax_pulse = xyes])
+AS_IF([test x"$ax_pulse" = x"yes"],
+      [PKG_CHECK_MODULES([PULSE], [libpulse])])
+pulse_def=0
+AS_IF([test x"$ax_pulse" = x"yes"],
+      [pulse_def=1])
+AC_DEFINE_UNQUOTED([HAS_PULSEAUDIO], [$pulse_def], [Build with pulseaudio])
+
 case $host_os in
 	linux*)
 	PKG_CHECK_MODULES([NLGENL], [libnl-genl-3.0])
 	PKG_CHECK_MODULES([ALSA], [alsa])
-	PKG_CHECK_MODULES([PULSE], [libpulse])
 	;;
 	netbsd*)
 	AC_SEARCH_LIBS([prop_string_create], [prop])
+	AC_SEARCH_LIBS([_oss_ioctl], [ossaudio])
 	;;
 esac
 
@@ -151,6 +165,7 @@ AS_HELP_STRING([is release version:], [${is_release}])
 AS_HELP_STRING([enable debug flags:], [${ax_enable_debug}])
 AS_HELP_STRING([code coverage:], [${CODE_COVERAGE_ENABLED}])
 AS_HELP_STRING([enabled sanitizers:], [${ax_enabled_sanitizers}])
+AS_HELP_STRING([pulseaudio support:], [${ax_pulse}])
 
 To compile, run:
 

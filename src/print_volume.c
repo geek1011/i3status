@@ -15,13 +15,13 @@
 #include <math.h>
 #endif
 
-#if defined(__FreeBSD__) || defined(__DragonFly__)
+#if defined(__FreeBSD__) || defined(__DragonFly__) || defined(__NetBSD__)
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/soundcard.h>
 #endif
 
-#ifdef __OpenBSD__
+#if defined(__OpenBSD__)
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/audioio.h>
@@ -86,7 +86,7 @@ void print_volume(yajl_gen json_gen, char *buffer, const char *fmt, const char *
         free(instance);
     }
 
-#if !defined(__DragonFly__) && !defined(__OpenBSD__)
+#if HAS_PULSEAUDIO
     /* Try PulseAudio first */
 
     /* If the device name has the format "pulse[:N]" where N is the
@@ -248,7 +248,7 @@ void print_volume(yajl_gen json_gen, char *buffer, const char *fmt, const char *
     snd_mixer_selem_id_free(sid);
 
 #endif
-#if defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__DragonFly__)
+#if defined(__FreeBSD__) || defined(__NetBSD__) || defined(__OpenBSD__) || defined(__DragonFly__)
     char *mixerpath;
     char defaultmixer[] = "/dev/mixer";
     int mixfd, vol, devmask = 0;
