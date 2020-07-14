@@ -16,8 +16,8 @@ Build-Depends: debhelper (>= 11),
                pkg-config
 Standards-Version: 4.1.4
 Homepage: https://i3wm.org/i3status
-Vcs-Git: https://github.com/geek1011/i3status.git
-Vcs-Browser: https://github.com/geek1011/i3status
+Vcs-Git: https://github.com/pgaskin/i3status.git
+Vcs-Browser: https://github.com/pgaskin/i3status
 
 Package: i3status
 Architecture: any
